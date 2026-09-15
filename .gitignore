@@ -61,3 +61,6 @@ dws-keychain/
 
 # Docker Buildx 本地状态
 .buildx/
+
+# ---- Git 隔离工作区 ----
+.worktrees/
