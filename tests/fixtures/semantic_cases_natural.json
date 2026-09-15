@@ -1,0 +1,100 @@
+[
+  {
+    "_说明": "自然语言模型评测集（Task 4）。这些消息不含显式关键词，需要云端模型判定意图。用于离线评测 SemanticClassifier。",
+    "id": "N01",
+    "text": "门口的地弹簧坏了，门关不上，麻烦尽快安排人来修",
+    "expected_intent": "ticket.create",
+    "expected_fields": {},
+    "has_keyword": false,
+    "notes": "自然语言报修——模型应识别为 ticket.create"
+  },
+  {
+    "id": "N02",
+    "text": "大厅的灯不亮了，什么时候能来看看？",
+    "expected_intent": "ticket.create",
+    "expected_fields": {},
+    "has_keyword": false,
+    "notes": "疑问句报修——模型应识别意图但不是命令"
+  },
+  {
+    "id": "N03",
+    "text": "上次报的那个空调漏水的问题，现在越漏越严重了",
+    "expected_intent": "ticket.add_detail",
+    "expected_fields": {},
+    "has_keyword": false,
+    "notes": "补充已有工单信息——应识别为 add_detail"
+  },
+  {
+    "id": "N04",
+    "text": "已经修好了， tested 没问题",
+    "expected_intent": "ticket.complete",
+    "expected_fields": {},
+    "has_keyword": false,
+    "notes": "自然语言完成——应识别为 complete"
+  },
+  {
+    "id": "N05",
+    "text": "这个不用修了，我们决定换新的",
+    "expected_intent": "ticket.cancel",
+    "expected_fields": {},
+    "has_keyword": false,
+    "notes": "自然语言取消——应识别为 cancel"
+  },
+  {
+    "id": "N06",
+    "text": "之前那个门又下沉了，还得再弄一下",
+    "expected_intent": "ticket.reopen",
+    "expected_fields": {},
+    "has_keyword": false,
+    "notes": "自然语言重开——应识别为 reopen"
+  },
+  {
+    "id": "N07",
+    "text": "今天午饭吃什么",
+    "expected_intent": "chat.ignore",
+    "expected_fields": {},
+    "has_keyword": false,
+    "notes": "闲聊——模型应忽略"
+  },
+  {
+    "id": "N08",
+    "text": "收到，我下午去看看",
+    "expected_intent": "chat.ignore",
+    "expected_fields": {},
+    "has_keyword": false,
+    "notes": "日常回复——无明确业务意图，应忽略"
+  },
+  {
+    "id": "N09",
+    "text": "麻烦帮我查一下现在有哪些没修完的单子",
+    "expected_intent": "ticket.query",
+    "expected_fields": {},
+    "has_keyword": false,
+    "notes": "自然语言查询——应识别为 query"
+  },
+  {
+    "id": "N10",
+    "text": "门坏了，能不能修一下",
+    "expected_intent": "ticket.create",
+    "expected_fields": {},
+    "has_keyword": false,
+    "notes": "疑问句但含明确故障描述（门坏了）→ 应建单（与 C10 标签一致）"
+  },
+  {
+    "id": "N11",
+    "text": "报修报修报修！！厕所水管爆了！！很急！！",
+    "expected_intent": "ticket.create",
+    "expected_fields": {},
+    "has_keyword": false,
+    "notes": "紧急口语报修——不含 #报修 关键词，模型应识别"
+  },
+  {
+    "id": "N12",
+    "text": "我觉得这个门可能不是下沉的问题，应该是合页松了",
+    "sender_role": "ENGINEER",
+    "expected_intent": "ticket.diagnosis.submit",
+    "expected_fields": {},
+    "has_keyword": false,
+    "notes": "自然语言故障判断——应识别为 diagnosis"
+  }
+]

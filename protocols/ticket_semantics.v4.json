@@ -1,0 +1,1199 @@
+{
+ "protocol_version": "4.0.0",
+ "compiled_at": "2026-08-18T00:00:00+08:00",
+ "compiled_by": "protocol_compiler",
+ "source_sha256": "b9bbb7366f704aee892cd6693298836ae2693a1c8f343886cb6743e8a1fafbc8",
+ "actions": [
+  {
+   "intent_id": "ticket.add_detail",
+   "display_name": "补充工单信息",
+   "explicit_keywords": [
+    "#补充"
+   ],
+   "semantic_enabled": true,
+   "allowed_roles": [
+    "MANAGER",
+    "ENGINEER",
+    "OTHER"
+   ],
+   "allowed_ticket_states": [
+    "ACTIVE",
+    "ACTIVE_OVERDUE"
+   ],
+   "required_fields": [
+    "ticket_no"
+   ],
+   "optional_fields": [
+    "content",
+    "attachments"
+   ],
+   "target_ticket_policy": "MUST_EXIST",
+   "risk_level": "LOW",
+   "confirmation_policy": {
+    "EXPLICIT_KEYWORD": "NOT_REQUIRED",
+    "SEMANTIC_MODEL": "BY_CONFIDENCE"
+   },
+   "positive_examples": [
+    "麻烦补充一下工单信息，问题描述：空调漏水更严重了",
+    "#补充 主题已更新为空调不制冷",
+    "#补充 问题描述：空调漏水更严重了",
+    "业务表达1：麻烦补充一下工单信息，问题描述：空调漏水更严重了",
+    "业务表达2：#补充 主题已更新为空调不制冷",
+    "业务表达3：#补充 问题描述：空调漏水更严重了",
+    "业务表达4：麻烦补充一下工单信息，问题描述：空调漏水更严重了",
+    "业务表达5：#补充 主题已更新为空调不制冷",
+    "业务表达6：#补充 问题描述：空调漏水更严重了",
+    "业务表达7：麻烦补充一下工单信息，问题描述：空调漏水更严重了"
+   ],
+   "negative_examples": [
+    "补充说明一下",
+    "我刚才说的是补充",
+    "补充点别的",
+    "边界反例1：补充说明一下",
+    "边界反例2：我刚才说的是补充",
+    "边界反例3：补充点别的",
+    "边界反例4：补充说明一下",
+    "边界反例5：我刚才说的是补充",
+    "边界反例6：补充点别的",
+    "边界反例7：补充说明一下"
+   ],
+   "confirmation_template": "",
+   "executor": "add_ticket_detail",
+   "field_definitions": {}
+  },
+  {
+   "intent_id": "ticket.cancel",
+   "display_name": "取消工单",
+   "explicit_keywords": [
+    "#取消工单"
+   ],
+   "semantic_enabled": true,
+   "allowed_roles": [
+    "MANAGER"
+   ],
+   "allowed_ticket_states": [
+    "ACTIVE",
+    "ACTIVE_OVERDUE",
+    "PENDING_CONFIRM",
+    "PENDING_NEGOTIATION"
+   ],
+   "required_fields": [
+    "ticket_no",
+    "cancel_reason"
+   ],
+   "optional_fields": [],
+   "target_ticket_policy": "MUST_EXIST",
+   "risk_level": "HIGH",
+   "confirmation_policy": {
+    "EXPLICIT_KEYWORD": "NOT_REQUIRED",
+    "SEMANTIC_MODEL": "ALWAYS"
+   },
+   "positive_examples": [
+    "帮我把这个工单取消掉，是误报，实际没有故障",
+    "#取消工单 原因：误报，实际无故障",
+    "#取消工单 原因：已由其他门店维修",
+    "业务表达1：帮我把这个工单取消掉，是误报，实际没有故障",
+    "业务表达2：#取消工单 原因：误报，实际无故障",
+    "业务表达3：#取消工单 原因：已由其他门店维修",
+    "业务表达4：帮我把这个工单取消掉，是误报，实际没有故障",
+    "业务表达5：#取消工单 原因：误报，实际无故障",
+    "业务表达6：#取消工单 原因：已由其他门店维修",
+    "业务表达7：帮我把这个工单取消掉，是误报，实际没有故障"
+   ],
+   "negative_examples": [
+    "这个工单可以取消吗",
+    "要不要取消工单",
+    "我可能想取消这个工单",
+    "工单取消是否可行",
+    "边界反例1：这个工单可以取消吗",
+    "边界反例2：要不要取消工单",
+    "边界反例3：我可能想取消这个工单",
+    "边界反例4：工单取消是否可行",
+    "边界反例5：这个工单可以取消吗",
+    "边界反例6：要不要取消工单"
+   ],
+   "confirmation_template": "⚠️ 确认取消工单 {ticket_no}？操作不可逆，请明确回复。",
+   "executor": "cancel_ticket",
+   "field_definitions": {}
+  },
+  {
+   "intent_id": "ticket.complete",
+   "display_name": "",
+   "explicit_keywords": [
+    "#完毕"
+   ],
+   "semantic_enabled": true,
+   "allowed_roles": [
+    "ENGINEER",
+    "MANAGER"
+   ],
+   "allowed_ticket_states": [
+    "ACTIVE",
+    "ACTIVE_OVERDUE",
+    "PENDING_NEGOTIATION"
+   ],
+   "required_fields": [],
+   "optional_fields": [],
+   "target_ticket_policy": "MUST_EXIST",
+   "risk_level": "HIGH",
+   "confirmation_policy": {
+    "EXPLICIT_KEYWORD": "NOT_REQUIRED",
+    "SEMANTIC_MODEL": "NOT_REQUIRED"
+   },
+   "positive_examples": [
+    "维修已经完成了，今天测试一切正常",
+    "业务表达1：维修已经完成了，今天测试一切正常",
+    "业务表达2：维修已经完成了，今天测试一切正常",
+    "业务表达3：维修已经完成了，今天测试一切正常",
+    "业务表达4：维修已经完成了，今天测试一切正常",
+    "业务表达5：维修已经完成了，今天测试一切正常",
+    "业务表达6：维修已经完成了，今天测试一切正常",
+    "业务表达7：维修已经完成了，今天测试一切正常",
+    "业务表达8：维修已经完成了，今天测试一切正常",
+    "业务表达9：维修已经完成了，今天测试一切正常"
+   ],
+   "negative_examples": [
+    "完成了吗",
+    "是不是可以完毕了",
+    "还不确定是否完成",
+    "边界反例1：完成了吗",
+    "边界反例2：是不是可以完毕了",
+    "边界反例3：还不确定是否完成",
+    "边界反例4：完成了吗",
+    "边界反例5：是不是可以完毕了",
+    "边界反例6：还不确定是否完成",
+    "边界反例7：完成了吗"
+   ],
+   "confirmation_template": "",
+   "executor": "complete_ticket",
+   "field_definitions": {}
+  },
+  {
+   "intent_id": "ticket.confirm_complete",
+   "display_name": "店长确认完成",
+   "explicit_keywords": [
+    "确认修好",
+    "#确认修好",
+    "#确认完成"
+   ],
+   "semantic_enabled": true,
+   "allowed_roles": [
+    "MANAGER"
+   ],
+   "allowed_ticket_states": [
+    "PENDING_CONFIRM"
+   ],
+   "required_fields": [],
+   "optional_fields": [
+    "ticket_no"
+   ],
+   "target_ticket_policy": "MUST_EXIST",
+   "risk_level": "NORMAL",
+   "confirmation_policy": {
+    "EXPLICIT_KEYWORD": "NOT_REQUIRED",
+    "SEMANTIC_MODEL": "NOT_REQUIRED"
+   },
+   "positive_examples": [
+    "确认修好",
+    "确认修好 工单编号：测试群（示例）-收银机-1天-001",
+    "#确认修好 已恢复正常",
+    "#确认完成",
+    "可以，收银机能正常用了，完成吧",
+    "没问题了，确认完成",
+    "修好了确认一下，可以关单了",
+    "好的确认修好了",
+    "测试通过，确认修好 工单编号：测试群（示例）-门锁-3天-002",
+    "店长确认：已修复，完成这张工单"
+   ],
+   "negative_examples": [
+    "还没修好",
+    "应该快修好了吧",
+    "帮我确认一下维修方式",
+    "等会儿再确认",
+    "你确认过故障原因吗",
+    "还没试，等下确认",
+    "需要供应商上门后再确认",
+    "先别关单，我还没验收",
+    "确认收到货了",
+    "确认一下上门时间"
+   ],
+   "confirmation_template": "",
+   "executor": "confirm_complete_ticket",
+   "field_definitions": {}
+  },
+  {
+   "intent_id": "ticket.create",
+   "display_name": "",
+   "explicit_keywords": [
+    "#报修"
+   ],
+   "semantic_enabled": true,
+   "allowed_roles": [
+    "MANAGER",
+    "OTHER"
+   ],
+   "allowed_ticket_states": [],
+   "required_fields": [
+    "subject",
+    "location",
+    "problem_description",
+    "sla"
+   ],
+   "optional_fields": [],
+   "target_ticket_policy": "MUST_NOT_EXIST",
+   "risk_level": "NORMAL",
+   "confirmation_policy": {
+    "EXPLICIT_KEYWORD": "NOT_REQUIRED",
+    "SEMANTIC_MODEL": "BY_CONFIDENCE"
+   },
+   "positive_examples": [
+    "博物馆奇妙夜第一个房间的门下沉明显，开门时发生剐蹭，希望3天内能修好",
+    "#报修\n主题：博物馆奇妙夜\n位置：第一个房间的门\n问题描述：门下沉明显，开门时发生剐蹭\n时效：3天",
+    "业务表达1：博物馆奇妙夜第一个房间的门下沉明显，开门时发生剐蹭，希望3天内能修好",
+    "业务表达2：#报修\n主题：博物馆奇妙夜\n位置：第一个房间的门\n问题描述：门下沉明显，开门时发生剐蹭\n时效：3天",
+    "业务表达3：博物馆奇妙夜第一个房间的门下沉明显，开门时发生剐蹭，希望3天内能修好",
+    "业务表达4：#报修\n主题：博物馆奇妙夜\n位置：第一个房间的门\n问题描述：门下沉明显，开门时发生剐蹭\n时效：3天",
+    "业务表达5：博物馆奇妙夜第一个房间的门下沉明显，开门时发生剐蹭，希望3天内能修好",
+    "业务表达6：#报修\n主题：博物馆奇妙夜\n位置：第一个房间的门\n问题描述：门下沉明显，开门时发生剐蹭\n时效：3天",
+    "业务表达7：博物馆奇妙夜第一个房间的门下沉明显，开门时发生剐蹭，希望3天内能修好",
+    "业务表达8：#报修\n主题：博物馆奇妙夜\n位置：第一个房间的门\n问题描述：门下沉明显，开门时发生剐蹭\n时效：3天"
+   ],
+   "negative_examples": [
+    "门坏了怎么办",
+    "能不能报个修",
+    "今天天气不错",
+    "边界反例1：门坏了怎么办",
+    "边界反例2：能不能报个修",
+    "边界反例3：今天天气不错",
+    "边界反例4：门坏了怎么办",
+    "边界反例5：能不能报个修",
+    "边界反例6：今天天气不错",
+    "边界反例7：门坏了怎么办"
+   ],
+   "confirmation_template": "",
+   "executor": "create_ticket",
+   "field_definitions": {
+    "subject": {
+     "type": "text",
+     "required": true
+    },
+    "location": {
+     "type": "text",
+     "required": true
+    },
+    "problem_description": {
+     "type": "text",
+     "required": true
+    },
+    "sla": {
+     "type": "enum",
+     "required": true,
+     "allowed": [
+      "1天",
+      "3天",
+      "7天",
+      "待商榷"
+     ]
+    },
+    "device": {
+     "type": "text",
+     "required": false
+    }
+   }
+  },
+  {
+   "intent_id": "ticket.diagnosis.submit",
+   "display_name": "",
+   "explicit_keywords": [
+    "#故障判断"
+   ],
+   "semantic_enabled": true,
+   "allowed_roles": [
+    "ENGINEER"
+   ],
+   "allowed_ticket_states": [
+    "ACTIVE",
+    "ACTIVE_OVERDUE"
+   ],
+   "required_fields": [],
+   "optional_fields": [
+    "diagnosis_items"
+   ],
+   "target_ticket_policy": "MUST_EXIST",
+   "risk_level": "NORMAL",
+   "confirmation_policy": {
+    "EXPLICIT_KEYWORD": "NOT_REQUIRED",
+    "SEMANTIC_MODEL": "BY_CONFIDENCE"
+   },
+   "positive_examples": [
+    "我检查了一下，判断是门体明显下沉，另外上侧合页也存在松动",
+    "故障判断：网线水晶头问题",
+    "故障判断：门体明显下沉，故障判断：上侧合页松动",
+    "业务表达1：我检查了一下，判断是门体明显下沉，另外上侧合页也存在松动",
+    "业务表达2：故障判断：网线水晶头问题",
+    "业务表达3：故障判断：门体明显下沉，故障判断：上侧合页松动",
+    "业务表达4：我检查了一下，判断是门体明显下沉，另外上侧合页也存在松动",
+    "业务表达5：故障判断：网线水晶头问题",
+    "业务表达6：故障判断：门体明显下沉，故障判断：上侧合页松动",
+    "业务表达7：我检查了一下，判断是门体明显下沉，另外上侧合页也存在松动"
+   ],
+   "negative_examples": [
+    "可能是门框的问题吧",
+    "不太确定什么故障",
+    "你们觉得呢",
+    "摄像头这边的水晶头拔插一下",
+    "电源也一起拔插一下",
+    "边界反例1：可能是门框的问题吧",
+    "边界反例2：不太确定什么故障",
+    "边界反例3：你们觉得呢",
+    "边界反例4：可能是门框的问题吧",
+    "边界反例5：不太确定什么故障"
+   ],
+   "confirmation_template": "",
+   "executor": "submit_diagnosis",
+   "field_definitions": {
+    "diagnosis_items": {
+     "type": "string[]",
+     "required": false
+    }
+   }
+  },
+  {
+   "intent_id": "ticket.negotiate.submit",
+   "display_name": "设为待商榷",
+   "explicit_keywords": [
+    "#待商榷",
+    "#改待商榷"
+   ],
+   "semantic_enabled": true,
+   "allowed_roles": [
+    "MANAGER",
+    "ENGINEER"
+   ],
+   "allowed_ticket_states": [
+    "ACTIVE",
+    "ACTIVE_OVERDUE"
+   ],
+   "required_fields": [
+    "negotiate_reason"
+   ],
+   "optional_fields": [
+    "ticket_no"
+   ],
+   "target_ticket_policy": "MUST_EXIST",
+   "risk_level": "NORMAL",
+   "confirmation_policy": {
+    "EXPLICIT_KEYWORD": "REQUIRED",
+    "SEMANTIC_MODEL": "ALWAYS"
+   },
+   "positive_examples": [
+    "#待商榷 客户要求改方案",
+    "改成待商榷吧，方案没定",
+    "时效待定，先待商榷",
+    "这个单先待商榷，方案还没定",
+    "时效先待商榷，等客户确认",
+    "改成待商榷吧，价格没谈拢",
+    "先待商榷，等领导定方案",
+    "这个工单待商榷，暂时不设时效",
+    "业务表达1：#待商榷 客户要求改方案",
+    "业务表达2：改成待商榷吧，方案没定"
+   ],
+   "negative_examples": [
+    "待商榷怎么填",
+    "待商榷怎么操作",
+    "是不是要待商榷",
+    "待商榷的流程是怎样的",
+    "待商榷是什么意思",
+    "边界反例1：待商榷怎么填",
+    "边界反例2：待商榷怎么操作",
+    "边界反例3：是不是要待商榷",
+    "边界反例4：待商榷的流程是怎样的",
+    "边界反例5：待商榷是什么意思"
+   ],
+   "confirmation_template": "",
+   "executor": "submit_negotiate",
+   "field_definitions": {}
+  },
+  {
+   "intent_id": "ticket.query",
+   "display_name": "查询工单",
+   "explicit_keywords": [
+    "#查询工单"
+   ],
+   "semantic_enabled": true,
+   "allowed_roles": [
+    "MANAGER",
+    "ENGINEER",
+    "OTHER"
+   ],
+   "allowed_ticket_states": [],
+   "required_fields": [],
+   "optional_fields": [
+    "ticket_no"
+   ],
+   "target_ticket_policy": "ANY",
+   "risk_level": "LOW",
+   "confirmation_policy": {
+    "EXPLICIT_KEYWORD": "NOT_REQUIRED",
+    "SEMANTIC_MODEL": "NOT_REQUIRED"
+   },
+   "positive_examples": [
+    "现在有多少单在处理",
+    "现在有哪些工单在处理",
+    "帮我查一下工单",
+    "#查询工单",
+    "#查询工单 W001",
+    "业务表达1：现在有多少单在处理",
+    "业务表达2：现在有哪些工单在处理",
+    "业务表达3：帮我查一下工单",
+    "业务表达4：#查询工单",
+    "业务表达5：#查询工单 W001"
+   ],
+   "negative_examples": [
+    "这个工单是什么问题",
+    "边界反例1：这个工单是什么问题",
+    "边界反例2：这个工单是什么问题",
+    "边界反例3：这个工单是什么问题",
+    "边界反例4：这个工单是什么问题",
+    "边界反例5：这个工单是什么问题",
+    "边界反例6：这个工单是什么问题",
+    "边界反例7：这个工单是什么问题",
+    "边界反例8：这个工单是什么问题",
+    "边界反例9：这个工单是什么问题"
+   ],
+   "confirmation_template": "",
+   "executor": "query_ticket",
+   "field_definitions": {}
+  },
+  {
+   "intent_id": "ticket.reject_complete",
+   "display_name": "店长反馈未修好",
+   "explicit_keywords": [
+    "没修好",
+    "#没修好",
+    "还未修好"
+   ],
+   "semantic_enabled": true,
+   "allowed_roles": [
+    "MANAGER"
+   ],
+   "allowed_ticket_states": [
+    "PENDING_CONFIRM"
+   ],
+   "required_fields": [],
+   "optional_fields": [
+    "ticket_no",
+    "reject_reason"
+   ],
+   "target_ticket_policy": "MUST_EXIST",
+   "risk_level": "NORMAL",
+   "confirmation_policy": {
+    "EXPLICIT_KEYWORD": "NOT_REQUIRED",
+    "SEMANTIC_MODEL": "BY_CONFIDENCE"
+   },
+   "positive_examples": [
+    "没修好",
+    "没修好，还是不制冷",
+    "#没修好 问题还在",
+    "还未修好，门还是打不开",
+    "不行，还是老样子，没修好",
+    "试了一下还是不行，没修好",
+    "没修好 工单编号：测试群（示例）-收银机-1天-001 还会死机",
+    "店长反馈：尚未修复，继续处理",
+    "还是闪屏，没修好",
+    "问题没有解决，还未修好"
+   ],
+   "negative_examples": [
+    "确认修好",
+    "上次说没修好，现在好了",
+    "维修方式没确定",
+    "还没开始修",
+    "修好了",
+    "应该快修好了",
+    "没修好的话再叫一次工程师",
+    "之前没修好，这次换了配件",
+    "不确定是不是修好了，再观察下",
+    "没时间验收，明天再说"
+   ],
+   "confirmation_template": "",
+   "executor": "reject_complete_ticket",
+   "field_definitions": {}
+  },
+  {
+   "intent_id": "ticket.reopen",
+   "display_name": "重开工单",
+   "explicit_keywords": [
+    "#重开工单"
+   ],
+   "semantic_enabled": true,
+   "allowed_roles": [
+    "ENGINEER",
+    "MANAGER",
+    "LEADER"
+   ],
+   "allowed_ticket_states": [
+    "COMPLETED",
+    "CANCELLED",
+    "STOPPED"
+   ],
+   "required_fields": [
+    "ticket_no",
+    "reopen_reason"
+   ],
+   "optional_fields": [],
+   "target_ticket_policy": "MUST_EXIST",
+   "risk_level": "HIGH",
+   "confirmation_policy": {
+    "EXPLICIT_KEYWORD": "NOT_REQUIRED",
+    "SEMANTIC_MODEL": "ALWAYS"
+   },
+   "positive_examples": [
+    "门又坏了，把之前的工单重开吧，门再次下沉需要重新维修",
+    "#重开工单 原因：门再次下沉，需要重新维修",
+    "#重开工单 原因：上次维修未解决根本问题",
+    "业务表达1：门又坏了，把之前的工单重开吧，门再次下沉需要重新维修",
+    "业务表达2：#重开工单 原因：门再次下沉，需要重新维修",
+    "业务表达3：#重开工单 原因：上次维修未解决根本问题",
+    "业务表达4：门又坏了，把之前的工单重开吧，门再次下沉需要重新维修",
+    "业务表达5：#重开工单 原因：门再次下沉，需要重新维修",
+    "业务表达6：#重开工单 原因：上次维修未解决根本问题",
+    "业务表达7：门又坏了，把之前的工单重开吧，门再次下沉需要重新维修"
+   ],
+   "negative_examples": [
+    "能不能重开工单",
+    "我感觉需要重开",
+    "重新开一个吧",
+    "是否应该重开这个工单",
+    "边界反例1：能不能重开工单",
+    "边界反例2：我感觉需要重开",
+    "边界反例3：重新开一个吧",
+    "边界反例4：是否应该重开这个工单",
+    "边界反例5：能不能重开工单",
+    "边界反例6：我感觉需要重开"
+   ],
+   "confirmation_template": "⚠️ 确认重开工单 {ticket_no}？将恢复为活动状态。",
+   "executor": "reopen_ticket",
+   "field_definitions": {}
+  },
+  {
+   "intent_id": "ticket.repair_plan.submit",
+   "display_name": "",
+   "explicit_keywords": [
+    "#维修方式"
+   ],
+   "semantic_enabled": true,
+   "allowed_roles": [
+    "ENGINEER",
+    "MANAGER",
+    "OTHER"
+   ],
+   "allowed_ticket_states": [
+    "ACTIVE",
+    "ACTIVE_OVERDUE"
+   ],
+   "required_fields": [],
+   "optional_fields": [
+    "parts"
+   ],
+   "target_ticket_policy": "MUST_EXIST",
+   "risk_level": "NORMAL",
+   "confirmation_policy": {
+    "EXPLICIT_KEYWORD": "NOT_REQUIRED",
+    "SEMANTIC_MODEL": "BY_CONFIDENCE"
+   },
+   "positive_examples": [
+    "这个门我们打算淘宝采购后自行维修，订单号是TB-2024-001",
+    "#维修方式\n维修方式：淘宝采购后自行维修\n订单号：1234567890123456789",
+    "业务表达1：这个门我们打算淘宝采购后自行维修，订单号是TB-2024-001",
+    "业务表达2：#维修方式\n维修方式：淘宝采购后自行维修\n订单号：1234567890123456789",
+    "业务表达3：这个门我们打算淘宝采购后自行维修，订单号是TB-2024-001",
+    "业务表达4：#维修方式\n维修方式：淘宝采购后自行维修\n订单号：1234567890123456789",
+    "业务表达5：这个门我们打算淘宝采购后自行维修，订单号是TB-2024-001",
+    "业务表达6：#维修方式\n维修方式：淘宝采购后自行维修\n订单号：1234567890123456789",
+    "业务表达7：这个门我们打算淘宝采购后自行维修，订单号是TB-2024-001",
+    "业务表达8：#维修方式\n维修方式：淘宝采购后自行维修\n订单号：1234567890123456789"
+   ],
+   "negative_examples": [
+    "要不要换新的",
+    "能不能修一下",
+    "哪个方案好",
+    "边界反例1：要不要换新的",
+    "边界反例2：能不能修一下",
+    "边界反例3：哪个方案好",
+    "边界反例4：要不要换新的",
+    "边界反例5：能不能修一下",
+    "边界反例6：哪个方案好",
+    "边界反例7：要不要换新的"
+   ],
+   "confirmation_template": "",
+   "executor": "submit_repair_plan",
+   "field_definitions": {}
+  },
+  {
+   "intent_id": "ticket.select",
+   "display_name": "选择工单上下文",
+   "explicit_keywords": [
+    "#选择工单"
+   ],
+   "semantic_enabled": true,
+   "allowed_roles": [
+    "MANAGER",
+    "ENGINEER",
+    "OTHER"
+   ],
+   "allowed_ticket_states": [],
+   "required_fields": [
+    "ticket_no"
+   ],
+   "optional_fields": [],
+   "target_ticket_policy": "MUST_EXIST",
+   "risk_level": "LOW",
+   "confirmation_policy": {
+    "EXPLICIT_KEYWORD": "NOT_REQUIRED",
+    "SEMANTIC_MODEL": "NOT_REQUIRED"
+   },
+   "positive_examples": [
+    "#选择工单 W001",
+    "我选第二张工单 T002",
+    "选择工单 T002",
+    "业务表达1：#选择工单 W001",
+    "业务表达2：我选第二张工单 T002",
+    "业务表达3：选择工单 T002",
+    "业务表达4：#选择工单 W001",
+    "业务表达5：我选第二张工单 T002",
+    "业务表达6：选择工单 T002",
+    "业务表达7：#选择工单 W001"
+   ],
+   "negative_examples": [
+    "现在有哪些工单",
+    "第二张工单是什么问题",
+    "边界反例1：现在有哪些工单",
+    "边界反例2：第二张工单是什么问题",
+    "边界反例3：现在有哪些工单",
+    "边界反例4：第二张工单是什么问题",
+    "边界反例5：现在有哪些工单",
+    "边界反例6：第二张工单是什么问题",
+    "边界反例7：现在有哪些工单",
+    "边界反例8：第二张工单是什么问题"
+   ],
+   "confirmation_template": "",
+   "executor": "select_ticket",
+   "field_definitions": {}
+  },
+  {
+   "intent_id": "ticket.special_case.submit",
+   "display_name": "登记特殊情况",
+   "explicit_keywords": [
+    "#特殊情况"
+   ],
+   "semantic_enabled": true,
+   "allowed_roles": [
+    "MANAGER",
+    "ENGINEER"
+   ],
+   "allowed_ticket_states": [
+    "ACTIVE",
+    "ACTIVE_OVERDUE",
+    "PENDING_CONFIRM"
+   ],
+   "required_fields": [
+    "special_case_reason"
+   ],
+   "optional_fields": [
+    "ticket_no",
+    "expected_resume_at"
+   ],
+   "target_ticket_policy": "MUST_EXIST",
+   "risk_level": "LOW",
+   "confirmation_policy": {
+    "EXPLICIT_KEYWORD": "NOT_REQUIRED",
+    "SEMANTIC_MODEL": "NOT_REQUIRED"
+   },
+   "positive_examples": [
+    "特殊情况：等待门店接客两场连场 预计恢复：一小时内",
+    "特殊情况：等待到货；预计恢复：明天下午",
+    "特殊情况：等待工程师上门，预计恢复：2026-08-28 10:00",
+    "有特殊情况，门店现在接客走不开，预计一小时内恢复处理",
+    "特殊情况 等待客户配合 预计恢复 半小时",
+    "业务表达1：特殊情况：等待门店接客两场连场 预计恢复：一小时内",
+    "业务表达2：特殊情况：等待到货；预计恢复：明天下午",
+    "业务表达3：特殊情况：等待工程师上门，预计恢复：2026-08-28 10:00",
+    "业务表达4：有特殊情况，门店现在接客走不开，预计一小时内恢复处理",
+    "业务表达5：特殊情况 等待客户配合 预计恢复 半小时"
+   ],
+   "negative_examples": [
+    "特殊情况怎么填",
+    "没有什么特殊情况",
+    "是不是有特殊情况",
+    "特殊情况下你们一般怎么处理",
+    "这单挺特殊的",
+    "边界反例1：特殊情况怎么填",
+    "边界反例2：没有什么特殊情况",
+    "边界反例3：是不是有特殊情况",
+    "边界反例4：特殊情况下你们一般怎么处理",
+    "边界反例5：这单挺特殊的"
+   ],
+   "confirmation_template": "",
+   "executor": "submit_special_case",
+   "field_definitions": {}
+  },
+  {
+   "intent_id": "ticket.stop",
+   "display_name": "停修工单",
+   "explicit_keywords": [
+    "#停止维修"
+   ],
+   "semantic_enabled": true,
+   "allowed_roles": [
+    "LEADER"
+   ],
+   "allowed_ticket_states": [
+    "ACTIVE",
+    "ACTIVE_OVERDUE",
+    "PENDING_CONFIRM",
+    "PENDING_NEGOTIATION"
+   ],
+   "required_fields": [
+    "ticket_no",
+    "stop_reason"
+   ],
+   "optional_fields": [],
+   "target_ticket_policy": "MUST_EXIST",
+   "risk_level": "HIGH",
+   "confirmation_policy": {
+    "EXPLICIT_KEYWORD": "NOT_REQUIRED",
+    "SEMANTIC_MODEL": "ALWAYS"
+   },
+   "positive_examples": [
+    "这个工单不要再修了，停止维修，配件已停产无法修复",
+    "#停止维修 原因：配件停产，无法修复",
+    "工单 W001 停止维修，原因：设备已报废不再维修",
+    "业务表达1：这个工单不要再修了，停止维修，配件已停产无法修复",
+    "业务表达2：#停止维修 原因：配件停产，无法修复",
+    "业务表达3：工单 W001 停止维修，原因：设备已报废不再维修",
+    "业务表达4：这个工单不要再修了，停止维修，配件已停产无法修复",
+    "业务表达5：#停止维修 原因：配件停产，无法修复",
+    "业务表达6：工单 W001 停止维修，原因：设备已报废不再维修",
+    "业务表达7：这个工单不要再修了，停止维修，配件已停产无法修复"
+   ],
+   "negative_examples": [
+    "这个工单还要继续修吗",
+    "停止维修是终态吗",
+    "我不太确定要不要停修",
+    "边界反例1：这个工单还要继续修吗",
+    "边界反例2：停止维修是终态吗",
+    "边界反例3：我不太确定要不要停修",
+    "边界反例4：这个工单还要继续修吗",
+    "边界反例5：停止维修是终态吗",
+    "边界反例6：我不太确定要不要停修",
+    "边界反例7：这个工单还要继续修吗"
+   ],
+   "confirmation_template": "⚠️ 确认停止维修工单 {ticket_no}？该工单将进入停修终态，可随时重开。请明确回复。",
+   "executor": "stop_ticket",
+   "field_definitions": {}
+  },
+  {
+   "intent_id": "ticket.timeout_reason.submit",
+   "display_name": "",
+   "explicit_keywords": [
+    "#超时原因"
+   ],
+   "semantic_enabled": true,
+   "allowed_roles": [
+    "ENGINEER"
+   ],
+   "allowed_ticket_states": [
+    "ACTIVE",
+    "ACTIVE_OVERDUE"
+   ],
+   "required_fields": [
+    "timeout_reason"
+   ],
+   "optional_fields": [],
+   "target_ticket_policy": "MUST_EXIST",
+   "risk_level": "NORMAL",
+   "confirmation_policy": {
+    "EXPLICIT_KEYWORD": "NOT_REQUIRED",
+    "SEMANTIC_MODEL": "BY_CONFIDENCE"
+   },
+   "positive_examples": [
+    "这次没按时完成是因为新合页物流延迟，未能按期到货",
+    "业务表达1：这次没按时完成是因为新合页物流延迟，未能按期到货",
+    "业务表达2：这次没按时完成是因为新合页物流延迟，未能按期到货",
+    "业务表达3：这次没按时完成是因为新合页物流延迟，未能按期到货",
+    "业务表达4：这次没按时完成是因为新合页物流延迟，未能按期到货",
+    "业务表达5：这次没按时完成是因为新合页物流延迟，未能按期到货",
+    "业务表达6：这次没按时完成是因为新合页物流延迟，未能按期到货",
+    "业务表达7：这次没按时完成是因为新合页物流延迟，未能按期到货",
+    "业务表达8：这次没按时完成是因为新合页物流延迟，未能按期到货",
+    "业务表达9：这次没按时完成是因为新合页物流延迟，未能按期到货"
+   ],
+   "negative_examples": [
+    "为什么会超时",
+    "还不清楚原因",
+    "可能要延期",
+    "边界反例1：为什么会超时",
+    "边界反例2：还不清楚原因",
+    "边界反例3：可能要延期",
+    "边界反例4：为什么会超时",
+    "边界反例5：还不清楚原因",
+    "边界反例6：可能要延期",
+    "边界反例7：为什么会超时"
+   ],
+   "confirmation_template": "",
+   "executor": "submit_timeout_reason",
+   "field_definitions": {
+    "timeout_reason": {
+     "type": "text",
+     "required": true
+    }
+   }
+  },
+  {
+   "intent_id": "system.clarify",
+   "display_name": "要求用户澄清",
+   "explicit_keywords": [],
+   "semantic_enabled": true,
+   "allowed_roles": [],
+   "allowed_ticket_states": [],
+   "required_fields": [
+    "clarification_reason"
+   ],
+   "optional_fields": [],
+   "target_ticket_policy": "ANY",
+   "risk_level": "LOW",
+   "confirmation_policy": {},
+   "positive_examples": [
+    "一条消息里同时有报修和完毕，无法确定先执行哪个",
+    "同时提到多个互斥操作，需要先向用户确认",
+    "业务表达1：一条消息里同时有报修和完毕，无法确定先执行哪个",
+    "业务表达2：同时提到多个互斥操作，需要先向用户确认",
+    "业务表达3：一条消息里同时有报修和完毕，无法确定先执行哪个",
+    "业务表达4：同时提到多个互斥操作，需要先向用户确认",
+    "业务表达5：一条消息里同时有报修和完毕，无法确定先执行哪个",
+    "业务表达6：同时提到多个互斥操作，需要先向用户确认",
+    "业务表达7：一条消息里同时有报修和完毕，无法确定先执行哪个",
+    "业务表达8：同时提到多个互斥操作，需要先向用户确认"
+   ],
+   "negative_examples": [
+    "只明确表达一个意图的消息",
+    "用户明确说报修但缺少字段，应返回 ticket.create",
+    "边界反例1：只明确表达一个意图的消息",
+    "边界反例2：用户明确说报修但缺少字段，应返回 ticket.create",
+    "边界反例3：只明确表达一个意图的消息",
+    "边界反例4：用户明确说报修但缺少字段，应返回 ticket.create",
+    "边界反例5：只明确表达一个意图的消息",
+    "边界反例6：用户明确说报修但缺少字段，应返回 ticket.create",
+    "边界反例7：只明确表达一个意图的消息",
+    "边界反例8：用户明确说报修但缺少字段，应返回 ticket.create"
+   ],
+   "confirmation_template": "",
+   "executor": "clarify",
+   "field_definitions": {}
+  },
+  {
+   "intent_id": "system.confirm_pending_action",
+   "display_name": "确认待处理动作",
+   "explicit_keywords": [],
+   "semantic_enabled": true,
+   "allowed_roles": [],
+   "allowed_ticket_states": [],
+   "required_fields": [],
+   "optional_fields": [],
+   "target_ticket_policy": "ANY",
+   "risk_level": "LOW",
+   "confirmation_policy": {},
+   "positive_examples": [
+    "确认",
+    "是",
+    "好的，就这样",
+    "业务表达1：确认",
+    "业务表达2：是",
+    "业务表达3：好的，就这样",
+    "业务表达4：确认",
+    "业务表达5：是",
+    "业务表达6：好的，就这样",
+    "业务表达7：确认"
+   ],
+   "negative_examples": [
+    "不是",
+    "不对",
+    "确认一下再说",
+    "我觉得需要确认",
+    "边界反例1：不是",
+    "边界反例2：不对",
+    "边界反例3：确认一下再说",
+    "边界反例4：我觉得需要确认",
+    "边界反例5：不是",
+    "边界反例6：不对"
+   ],
+   "confirmation_template": "",
+   "executor": "confirm_pending_action",
+   "field_definitions": {}
+  },
+  {
+   "intent_id": "system.correct_pending_action",
+   "display_name": "修正待确认动作",
+   "explicit_keywords": [],
+   "semantic_enabled": true,
+   "allowed_roles": [],
+   "allowed_ticket_states": [],
+   "required_fields": [],
+   "optional_fields": [],
+   "target_ticket_policy": "ANY",
+   "risk_level": "LOW",
+   "confirmation_policy": {},
+   "positive_examples": [
+    "不是这个，是",
+    "应该是",
+    "改成",
+    "不对，要修改",
+    "业务表达1：不是这个，是",
+    "业务表达2：应该是",
+    "业务表达3：改成",
+    "业务表达4：不对，要修改",
+    "业务表达5：不是这个，是",
+    "业务表达6：应该是"
+   ],
+   "negative_examples": [
+    "是不是要改一下",
+    "可以考虑修改",
+    "边界反例1：是不是要改一下",
+    "边界反例2：可以考虑修改",
+    "边界反例3：是不是要改一下",
+    "边界反例4：可以考虑修改",
+    "边界反例5：是不是要改一下",
+    "边界反例6：可以考虑修改",
+    "边界反例7：是不是要改一下",
+    "边界反例8：可以考虑修改"
+   ],
+   "confirmation_template": "",
+   "executor": "correct_pending_action",
+   "field_definitions": {}
+  },
+  {
+   "intent_id": "system.reject_pending_action",
+   "display_name": "拒绝待处理动作",
+   "explicit_keywords": [],
+   "semantic_enabled": true,
+   "allowed_roles": [],
+   "allowed_ticket_states": [],
+   "required_fields": [],
+   "optional_fields": [],
+   "target_ticket_policy": "ANY",
+   "risk_level": "LOW",
+   "confirmation_policy": {},
+   "positive_examples": [
+    "不",
+    "拒绝",
+    "取消",
+    "不对，不开",
+    "业务表达1：不",
+    "业务表达2：拒绝",
+    "业务表达3：取消",
+    "业务表达4：不对，不开",
+    "业务表达5：不",
+    "业务表达6：拒绝"
+   ],
+   "negative_examples": [
+    "不确定",
+    "不好说",
+    "我先问问",
+    "边界反例1：不确定",
+    "边界反例2：不好说",
+    "边界反例3：我先问问",
+    "边界反例4：不确定",
+    "边界反例5：不好说",
+    "边界反例6：我先问问",
+    "边界反例7：不确定"
+   ],
+   "confirmation_template": "",
+   "executor": "reject_pending_action",
+   "field_definitions": {}
+  },
+  {
+   "intent_id": "chat.ignore",
+   "display_name": "忽略（闲聊/无关消息）",
+   "explicit_keywords": [],
+   "semantic_enabled": false,
+   "allowed_roles": [],
+   "allowed_ticket_states": [],
+   "required_fields": [],
+   "optional_fields": [],
+   "target_ticket_policy": "ANY",
+   "risk_level": "LOW",
+   "confirmation_policy": {},
+   "positive_examples": [],
+   "negative_examples": [],
+   "confirmation_template": "",
+   "executor": "ignore_message",
+   "field_definitions": {}
+  }
+ ],
+ "field_dictionary": {
+  "ticket_no": {
+   "type": "string",
+   "aliases": [
+    "工单号",
+    "工单编号"
+   ]
+  },
+  "subject": {
+   "type": "text",
+   "aliases": [
+    "主题"
+   ]
+  },
+  "location": {
+   "type": "text",
+   "aliases": [
+    "位置"
+   ]
+  },
+  "problem_description": {
+   "type": "text",
+   "aliases": [
+    "问题描述"
+   ]
+  },
+  "device": {
+   "type": "text",
+   "aliases": [
+    "设备",
+    "设备名称"
+   ]
+  },
+  "urgency": {
+   "type": "enum",
+   "allowed": [
+    "低",
+    "中",
+    "高"
+   ]
+  },
+  "attachments": {
+   "type": "object[]",
+   "aliases": [
+    "附件"
+   ]
+  },
+  "sla": {
+   "type": "enum",
+   "allowed": [
+    "1天",
+    "3天",
+    "7天",
+    "待商榷"
+   ],
+   "aliases": [
+    "时效",
+    "维修时效"
+   ]
+  },
+  "diagnosis_items": {
+   "type": "string[]",
+   "aliases": [
+    "故障判断"
+   ]
+  },
+  "repair_method": {
+   "type": "text",
+   "aliases": [
+    "维修方式"
+   ]
+  },
+  "order_no": {
+   "type": "string",
+   "aliases": [
+    "订单号",
+    "淘宝订单号"
+   ],
+   "pattern": "^[A-Za-z0-9-]{6,64}$"
+  },
+  "timeout_reason": {
+   "type": "text",
+   "aliases": [
+    "未完成原因",
+    "超时原因",
+    "延期原因"
+   ]
+  },
+  "completion_note": {
+   "type": "text",
+   "aliases": [
+    "完成说明"
+   ]
+  },
+  "cancel_reason": {
+   "type": "text",
+   "aliases": [
+    "取消原因"
+   ]
+  },
+  "reopen_reason": {
+   "type": "text",
+   "aliases": [
+    "重开原因"
+   ]
+  },
+  "stop_reason": {
+   "type": "text",
+   "aliases": [
+    "停修原因",
+    "停止维修原因"
+   ]
+  },
+  "clarification_reason": {
+   "type": "text",
+   "aliases": [
+    "澄清原因"
+   ]
+  },
+  "content": {
+   "type": "text",
+   "aliases": [
+    "内容",
+    "补充说明"
+   ]
+  },
+  "special_case_reason": {
+   "type": "text",
+   "aliases": [
+    "特殊情况",
+    "特殊情况原因"
+   ]
+  },
+  "expected_resume_at": {
+   "type": "text",
+   "aliases": [
+    "预计恢复",
+    "预计恢复时间"
+   ]
+  },
+  "negotiate_reason": {
+   "type": "text",
+   "aliases": [
+    "待商榷原因",
+    "商榷原因"
+   ]
+  }
+ },
+ "routing": {
+  "min_confidence": 0.6,
+  "clarify_threshold": 1.5
+ },
+ "risk_policies": {
+  "ticket.complete": {
+   "SEMANTIC_MODEL": "NOT_REQUIRED"
+  },
+  "ticket.cancel": {
+   "SEMANTIC_MODEL": "ALWAYS"
+  },
+  "ticket.stop": {
+   "SEMANTIC_MODEL": "ALWAYS"
+  },
+  "ticket.reopen": {
+   "SEMANTIC_MODEL": "ALWAYS"
+  }
+ }
+}

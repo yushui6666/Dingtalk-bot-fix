@@ -1,0 +1,24 @@
+# Cloudflare Tunnel 配置模板（命名隧道，长期用）
+#
+# 你回来登录时依次执行（在任意终端）：
+#   cloudflared tunnel login
+#   cloudflared tunnel create dingtalk-admin
+#   cloudflared tunnel route dns dingtalk-admin admin.你的域名.com
+#
+# 然后：
+#   1. 把下面 credentials-file 里的 <隧道ID> 换成 create 命令回显的真实 ID
+#      （就是 ~/.cloudflared/<隧道ID>.json 那个文件名）
+#   2. 把 hostname 换成你的真实域名
+#   3. 把本文件复制为 ~/.cloudflared/config.yml：
+#      cp dingtalk_script/admin/cloudflared-config.example.yml ~/.cloudflared/config.yml
+#      （复制后按上面两点改那一份，模板本身不动）
+#
+# 本地后台固定跑在 http://127.0.0.1:8899，只接受本机和隧道来的流量，
+# 公网只暴露 https://你的域名，8899 端口本身不对外。
+
+tunnel: dingtalk-admin
+credentials-file: /Users/example/.cloudflared/<隧道ID>.json
+ingress:
+  - hostname: admin.你的域名.com
+    service: http://127.0.0.1:8899
+  - service: http_status:404

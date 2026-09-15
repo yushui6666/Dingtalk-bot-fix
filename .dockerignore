@@ -1,0 +1,34 @@
+# ── 密钥与运行时数据：严禁进镜像 ──
+.env
+data/
+logs/
+archives/
+*.db
+*.db-shm
+*.db-wal
+*.pid
+*.log
+
+# ── 版本库与本地环境 ──
+.git/
+.gitignore
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.claude/
+.vscode/
+.DS_Store
+
+# ── 大体积非运行文件 ──
+bin/cloudflared
+框架/
+docs/上线前已处理事项.md
+node_modules/
+
+# ---- dws 登录凭证（严禁进镜像） ----
+dws-data/
+dws-keychain/

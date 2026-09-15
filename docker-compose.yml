@@ -1,0 +1,62 @@
+# 钉钉报修工单系统 — 容器编排（main 主系统 + admin 管理后台）
+#
+# 镜像只装项目代码与依赖，不含任何钉钉登录凭证：
+# 在目标机上自行登录 dws，凭证落在本机 ./dws-data（或改挂载到你已有的登录态目录）。
+#
+# 首次使用（在目标机）：
+#   1) docker compose up -d
+#   2) docker compose run --rm main dws auth login    # 登录钉钉，凭证留存本机，只需一次
+#   3) docker compose restart main
+#   4) 管理后台 http://127.0.0.1:8899
+#
+# ⚠️ 启动前请先停掉宿主机旧进程（bash manage.sh stop）：
+#    同一钉钉账号双跑会重复消费群消息，造成重复建单/回复。
+services:
+  main:                    # 主系统：监听群消息 → 语义处理 → 建单/催办/归档/看板同步
+    build: .
+    image: dingtalk-tickets:latest
+    restart: unless-stopped
+    init: true             # 以 init 进程回收 dws 子进程，避免僵尸堆积
+    stop_signal: SIGINT    # main.py 捕获 KeyboardInterrupt，可优雅收尾（关库/清任务）
+    stop_grace_period: 30s
+    env_file: .env         # 密钥/开关注入进程环境（真实环境变量优先，与 config.py 读 .env 语义一致）
+                           # 若项目没有 .env，删除本行与下方 ./.env 挂载即可
+    environment:
+      TZ: Asia/Shanghai
+      DWS_CONFIG_DIR: /data/dws
+    volumes:
+      - ./.env:/app/.env:ro      # 挂载而非打进镜像，密钥不落镜像层
+      - ./data:/app/data         # SQLite 工单库 + groups.json（启动强校验，必须有）
+      - ./logs:/app/logs
+      - ./archives:/app/archives # 归档 Markdown/JSON 与图片附件
+      - ./dws-data:/data/dws     # dws 配置目录（DWS_CONFIG_DIR 指向这里）
+      - ./dws-keychain:/root/.local/share/dws-cli  # Linux 下 token 密文固定在这（不跟随 DWS_CONFIG_DIR），必须一起挂才持久
+      # ── 可选：容器内使用淘宝对账共享表（默认路径指向 macOS 桌面，需另行挂载）──
+      # - /Users/example/Desktop/淘宝对账:/taobao
+      # environment:
+      #   ORDER_STORE_TABLE_PATH: /taobao/订单门店状态表.xlsx
+      #   TAOBAO_ORDER_DETAIL_XLSX: /taobao/订单地址明细.xlsx
+      #   TAOBAO_PENDING_XLSX: /taobao/待人工处理.xlsx
+    command: ["python", "main.py", "--mode", "PRODUCTION"]
+
+  admin:                   # 管理后台：直查/直改 SQLite、工单看板与快捷操作
+    image: dingtalk-tickets:latest   # 复用 main 构建出的镜像
+    restart: unless-stopped
+    init: true
+    depends_on:
+      - main
+    environment:
+      TZ: Asia/Shanghai
+      # ADMIN_PASSWORD: "改成你的密码"   # 默认无密码直接访问，公网暴露前务必设置
+    ports:
+      - "8899:8899"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    command: ["python", "admin/server.py", "--port", "8899", "--host", "0.0.0.0"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8899/', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

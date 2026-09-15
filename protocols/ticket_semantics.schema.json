@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/ticket_semantics.v4.schema.json",
+  "title": "钉钉群报修工单语义协议 v4.0",
+  "description": "定义运行时协议的结构约束。业务源 JSON 经 compiler 编译后必须符合本 Schema。",
+  "type": "object",
+  "required": ["protocol_version", "compiled_at", "actions", "field_dictionary"],
+  "properties": {
+    "protocol_version": {
+      "type": "string",
+      "const": "4.0.0"
+    },
+    "compiled_at": { "type": "string" },
+    "compiled_by": { "type": "string" },
+    "source_sha256": { "type": "string" },
+    "actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "intent_id", "display_name", "explicit_keywords",
+          "allowed_roles", "allowed_ticket_states",
+          "required_fields", "target_ticket_policy",
+          "risk_level", "executor"
+        ],
+        "properties": {
+          "intent_id": { "type": "string" },
+          "display_name": { "type": "string" },
+          "explicit_keywords": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "semantic_enabled": { "type": "boolean" },
+          "allowed_roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["MANAGER", "ENGINEER", "LEADER", "OTHER", "SYSTEM"]
+            }
+          },
+          "allowed_ticket_states": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "required_fields": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "optional_fields": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "target_ticket_policy": {
+            "type": "string",
+            "enum": ["MUST_EXIST", "MUST_NOT_EXIST", "ANY", "MUST_EXIST_OR_NONE"]
+          },
+          "risk_level": {
+            "type": "string",
+            "enum": ["LOW", "NORMAL", "HIGH", "CRITICAL"]
+          },
+          "confirmation_policy": {
+            "type": "object",
+            "properties": {
+              "EXPLICIT_KEYWORD": {
+                "type": "string",
+                "enum": ["NOT_REQUIRED", "REQUIRED"]
+              },
+              "SEMANTIC_MODEL": {
+                "type": "string",
+                "enum": ["NOT_REQUIRED", "BY_CONFIDENCE", "ALWAYS"]
+              }
+            }
+          },
+          "positive_examples": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "negative_examples": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "confirmation_template": { "type": "string" },
+          "executor": { "type": "string" },
+          "field_definitions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string" },
+                "required": { "type": "boolean" },
+                "allowed": { "type": "array" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "field_dictionary": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string" },
+          "aliases": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "allowed": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "routing": {
+      "type": "object",
+      "properties": {
+        "min_confidence": { "type": "number" },
+        "clarify_threshold": { "type": "number" }
+      }
+    },
+    "risk_policies": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "SEMANTIC_MODEL": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,920 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>报修工单 · 管理后台</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<script>
+tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','system-ui','sans-serif'],mono:['JetBrains Mono','monospace']}}}}
+</script>
+<style>
+*{-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:99px}
+::-webkit-scrollbar-track{background:transparent}
+.table-wrap::-webkit-scrollbar{height:8px}
+.cell-edit input{width:100%;border:1px solid #3b82f6;border-radius:6px;padding:4px 8px;font-size:13px;outline:none}
+.code{font-family:'JetBrains Mono',monospace}
+</style>
+</head>
+<body class="bg-[#f6f7f9] text-zinc-900 font-sans min-h-screen">
+<!-- Login Overlay -->
+<div id="loginOverlay" class="fixed inset-0 z-50 bg-[#0f172a]/80 backdrop-blur-sm flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-[420px] overflow-hidden">
+    <div class="h-1.5 bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600"></div>
+    <div class="p-8">
+      <div class="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center text-white text-xl mb-4">🗄️</div>
+      <h1 class="text-[22px] font-bold tracking-tight">报修工单 管理后台</h1>
+      <p class="text-sm text-zinc-500 mt-1">直接操作数据库 · 请先登录</p>
+      <div class="mt-6 space-y-4">
+        <div>
+          <label class="text-xs font-semibold text-zinc-600 tracking-widest uppercase">Password</label>
+          <input id="pwdInput" type="password" placeholder="请输入登录密码" class="mt-1.5 w-full h-11 px-3.5 rounded-xl border border-zinc-200 bg-zinc-50 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition text-sm" onkeydown="if(event.key==='Enter')doLogin()"/>
+        </div>
+        <button onclick="doLogin()" class="w-full h-11 rounded-xl bg-zinc-900 text-white font-medium hover:bg-black transition flex items-center justify-center gap-2">登录 <span class="opacity-60">→</span></button>
+        <p id="loginErr" class="text-sm text-red-600 hidden"></p>
+        <p class="text-xs text-zinc-400">密码在服务端 <span class="code bg-zinc-100 px-1.5 py-0.5 rounded">admin/.env</span> 的 <span class="code bg-zinc-100 px-1.5 py-0.5 rounded">ADMIN_PASSWORD</span> 中设置（无默认密码）</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app" class="hidden">
+  <!-- Topbar -->
+  <header class="h-[56px] bg-white border-b border-zinc-200/70 flex items-center justify-between px-4 lg:px-6 sticky top-0 z-30">
+    <div class="flex items-center gap-3">
+      <button onclick="toggleSidebar()" class="lg:hidden w-9 h-9 rounded-lg hover:bg-zinc-100 flex items-center justify-center">☰</button>
+      <div class="w-9 h-9 rounded-xl bg-zinc-900 text-white flex items-center justify-center text-sm font-bold">DB</div>
+      <div>
+        <div class="text-[15px] font-semibold leading-none tracking-tight">报修工单 · 管理后台</div>
+        <div class="text-[11px] text-zinc-500 code hidden sm:block" id="dbPathLabel">tickets.db</div>
+      </div>
+      <span class="hidden sm:inline-flex ml-3 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">● 在线</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <button onclick="doBackup()" class="hidden sm:inline-flex h-8 px-3 rounded-full border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-medium">备份数据库</button>
+      <button onclick="location.reload()" class="w-8 h-8 rounded-full border border-zinc-200 bg-white hover:bg-zinc-50 flex items-center justify-center text-zinc-600" title="刷新">↻</button>
+      <button onclick="doLogout()" class="h-8 px-3 rounded-full bg-zinc-900 text-white text-xs font-medium hover:bg-black">退出</button>
+    </div>
+  </header>
+
+  <div class="flex min-h-[calc(100vh-56px)]">
+    <!-- Sidebar -->
+    <aside id="sidebar" class="w-[280px] shrink-0 bg-white border-r border-zinc-200/70 hidden lg:block overflow-y-auto sticky top-[56px] h-[calc(100vh-56px)]">
+      <div class="p-3">
+        <nav class="space-y-4">
+          <div class="space-y-2">
+            <button onclick="openCreateModal2()" class="w-full h-11 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition">＋ 新建工单</button>
+            <button onclick="openTicketView()" id="nav-tickets" class="nav-btn w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-zinc-50 text-sm font-medium text-zinc-700">
+              <span class="w-7 h-7 rounded-lg bg-zinc-100 flex items-center justify-center text-xs">🎫</span> 工单管理
+            </button>
+            <button onclick="navTo('dashboard')" id="nav-dashboard" class="nav-btn w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-zinc-900 text-white font-medium text-sm">
+              <span class="w-7 h-7 rounded-lg bg-white/15 flex items-center justify-center text-xs">◈</span> 仪表盘
+            </button>
+          </div>
+          <details class="pt-2 border-t border-zinc-100 group/adv">
+            <summary class="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-zinc-400 hover:text-zinc-600">高级 · 原始表与 SQL</summary>
+            <div class="mt-1 space-y-4">
+              <div id="sidebarGroups" class="space-y-4"></div>
+              <button onclick="navTo('sql')" id="nav-sql" class="nav-btn w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-zinc-50 text-sm font-medium text-zinc-700">
+                <span class="w-7 h-7 rounded-lg bg-zinc-100 flex items-center justify-center">⌁</span> SQL 控制台
+              </button>
+            </div>
+          </details>
+        </nav>
+        <div class="mt-6 p-3 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white">
+          <div class="text-xs opacity-80">操作提示</div>
+          <div class="text-sm font-medium mt-1 leading-relaxed">所有写操作会自动备份，双击单元格可快速编辑。</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Mobile sidebar overlay -->
+    <div id="mobileMask" onclick="toggleSidebar()" class="fixed inset-0 bg-black/30 z-20 hidden lg:hidden top-[56px]"></div>
+
+    <!-- Main -->
+    <main class="flex-1 min-w-0">
+      <!-- Dashboard -->
+      <section id="view-dashboard" class="p-4 lg:p-6 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-[18px] font-bold tracking-tight">概览</h2>
+          <span class="text-xs text-zinc-500" id="nowLabel"></span>
+        </div>
+        <div id="statsGrid" class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <!-- cards injected -->
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div class="lg:col-span-2 bg-white rounded-2xl border border-zinc-200 p-4">
+            <div class="text-sm font-semibold">最近工单</div>
+            <div id="recentTickets" class="mt-3 space-y-2"></div>
+          </div>
+          <div class="bg-white rounded-2xl border border-zinc-200 p-4">
+            <div class="text-sm font-semibold">快捷操作</div>
+            <div class="mt-3 grid grid-cols-2 gap-2">
+              <button onclick="openCreateModal2()" class="h-11 rounded-xl bg-indigo-600 text-white text-sm font-medium">＋ 新建工单</button>
+              <button onclick="openTicketView()" class="h-11 rounded-xl bg-zinc-900 text-white text-sm font-medium">工单管理</button>
+              <button onclick="openTable('inbox_messages')" class="h-11 rounded-xl border border-zinc-200 bg-white text-sm font-medium">查看消息</button>
+              <button onclick="openTable('order_monitor')" class="h-11 rounded-xl border border-zinc-200 bg-white text-sm font-medium">订单监控</button>
+            </div>
+            <div class="mt-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs leading-relaxed text-amber-900">
+              ⚠️ 直接操作数据库会立即生效，建议先备份。全表默认按 <b>id 倒序</b> 展示。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Ticket Quick View 工单快捷管理 -->
+      <section id="view-tickets" class="hidden">
+        <div class="px-4 lg:px-6 py-4 border-b border-zinc-200 bg-white sticky top-[56px] z-10">
+          <div class="flex flex-wrap items-center gap-2">
+            <h2 class="text-[18px] font-bold tracking-tight mr-1">工单管理</h2>
+            <span id="ticketCount" class="px-2 py-0.5 rounded-full bg-zinc-100 text-xs font-mono"></span>
+            <div class="relative flex-1 min-w-[180px] max-w-[360px]">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">⌕</span>
+              <input id="ticketSearch" placeholder="搜编号 / 门店 / 主题…" class="w-full h-9 pl-8 pr-3 rounded-xl border border-zinc-200 bg-zinc-50 focus:bg-white focus:border-zinc-300 outline-none text-sm" oninput="debounceTicketSearch()"/>
+            </div>
+            <select id="ticketStatusFilter" onchange="loadTickets()" class="h-9 px-2.5 rounded-xl border border-zinc-200 bg-white text-sm">
+              <option value="">全部状态</option>
+              <option value="ACTIVE">进行中</option>
+              <option value="ACTIVE_OVERDUE">已超时</option>
+              <option value="PENDING_CONFIRM">待确认</option>
+              <option value="PENDING_NEGOTIATION">待商榷</option>
+              <option value="COMPLETED">已完成</option>
+              <option value="CANCELLED">已取消</option>
+              <option value="STOPPED">已停修</option>
+            </select>
+            <input id="exportMonth" type="month" title="导出月份（默认上月）" class="h-9 px-2.5 rounded-xl border border-zinc-200 bg-white text-sm"/>
+            <button onclick="exportSLAExcel(this)" class="h-9 px-4 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 text-sm font-semibold hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition">导出 SLA</button>
+            <button onclick="exportPerformanceExcel(this)" title="工程师绩效（按实际提交人归属·测试期参考）" class="h-9 px-4 rounded-full border border-violet-200 bg-violet-50 text-violet-700 text-sm font-semibold hover:bg-violet-600 hover:text-white hover:border-violet-600 transition">导出绩效</button>
+            <button onclick="openCreateModal2()" class="h-9 px-5 rounded-full bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">＋ 新建工单</button>
+          </div>
+        </div>
+        <div class="p-4 lg:p-6">
+          <div id="ticketList" class="grid grid-cols-1 xl:grid-cols-2 gap-3"></div>
+          <div id="ticketEmpty" class="hidden bg-white rounded-2xl border border-zinc-200 p-12 text-center text-zinc-500 text-sm">暂无工单，点右上「新建工单」创建一个吧</div>
+        </div>
+      </section>
+
+      <!-- Table View -->
+      <section id="view-table" class="hidden">
+        <div class="px-4 lg:px-6 py-4 border-b border-zinc-200 bg-white sticky top-[56px] z-10">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div class="flex items-center gap-2 text-sm">
+                <button onclick="navTo('dashboard')" class="text-zinc-500 hover:text-zinc-900">仪表盘</button>
+                <span class="text-zinc-300">/</span>
+                <span id="tableTitle" class="font-semibold"></span>
+                <span id="tableCount" class="px-2 py-0.5 rounded-full bg-zinc-100 text-xs font-mono"></span>
+              </div>
+              <div id="tableMeta" class="text-xs text-zinc-500 mt-1 code"></div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="exportCSV()" class="h-8 px-3 rounded-full border border-zinc-200 bg-white text-xs font-medium hover:bg-zinc-50">导出 CSV</button>
+              <button onclick="openAddModal()" class="h-8 px-4 rounded-full bg-zinc-900 text-white text-xs font-medium hover:bg-black">＋ 新增行</button>
+            </div>
+          </div>
+          <div class="mt-3 flex flex-wrap items-center gap-2">
+            <div class="relative flex-1 min-w-[220px] max-w-[420px]">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">⌕</span>
+              <input id="searchInput" placeholder="搜索任意字段…" class="w-full h-9 pl-8 pr-3 rounded-xl border border-zinc-200 bg-zinc-50 focus:bg-white focus:border-zinc-300 outline-none text-sm" oninput="debounceSearch()"/>
+            </div>
+            <select id="pageSizeSel" onchange="changePageSize()" class="h-9 px-2.5 rounded-xl border border-zinc-200 bg-white text-sm">
+              <option value="20">20 / 页</option><option value="50">50 / 页</option><option value="100">100 / 页</option>
+            </select>
+            <span id="pageInfo" class="text-xs text-zinc-500"></span>
+            <div class="ml-auto flex items-center gap-1">
+              <button onclick="changePage(-1)" class="w-8 h-8 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50">‹</button>
+              <span id="pageLabel" class="px-2 text-sm font-mono">1 / 1</span>
+              <button onclick="changePage(1)" class="w-8 h-8 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50">›</button>
+            </div>
+          </div>
+        </div>
+        <div class="p-4 lg:p-6">
+          <div class="bg-white rounded-2xl border border-zinc-200 overflow-hidden">
+            <div class="table-wrap overflow-auto max-h-[66vh]">
+              <table class="w-full text-sm">
+                <thead id="tableHead" class="sticky top-0 bg-zinc-50 border-b border-zinc-200"></thead>
+                <tbody id="tableBody" class="divide-y divide-zinc-100"></tbody>
+              </table>
+            </div>
+            <div id="emptyState" class="hidden p-12 text-center text-zinc-500 text-sm">暂无数据</div>
+          </div>
+          <div class="mt-3 flex items-center justify-between text-xs text-zinc-500">
+            <span>双击单元格编辑 · 点击表头排序 · 自动备份写操作</span>
+            <span id="sqlHint" class="code"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- SQL Console -->
+      <section id="view-sql" class="hidden p-4 lg:p-6 space-y-4">
+        <h2 class="text-[18px] font-bold">SQL 控制台</h2>
+        <div class="bg-white rounded-2xl border border-zinc-200 overflow-hidden">
+          <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-200 bg-zinc-50/60">
+            <div class="text-xs font-semibold tracking-widest uppercase text-zinc-600">SQL 编辑器</div>
+            <div class="flex items-center gap-2">
+              <button onclick="fillExample('select')" class="text-xs px-2.5 py-1 rounded-full border bg-white hover:bg-zinc-50">SELECT 示例</button>
+              <button onclick="fillExample('update')" class="text-xs px-2.5 py-1 rounded-full border bg-white hover:bg-zinc-50">UPDATE 示例</button>
+              <button onclick="execSQL()" class="h-8 px-4 rounded-full bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700">▶ 执行</button>
+            </div>
+          </div>
+          <textarea id="sqlInput" class="code w-full h-[160px] p-4 text-[13px] leading-5 outline-none resize-y border-0" placeholder="输入 SQL，例如：&#10;SELECT * FROM tickets ORDER BY id DESC LIMIT 20;&#10;-- 写操作会自动备份数据库文件"></textarea>
+        </div>
+        <div id="sqlResult" class="bg-white rounded-2xl border border-zinc-200 overflow-hidden hidden">
+          <div class="px-4 py-2 border-b border-zinc-100 flex items-center justify-between">
+            <span id="sqlMeta" class="text-xs text-zinc-600 code"></span>
+            <button onclick="copySQLResult()" class="text-xs px-2 py-1 rounded border bg-white">复制</button>
+          </div>
+          <div class="overflow-auto max-h-[50vh]">
+            <table class="w-full text-xs">
+              <thead id="sqlHead" class="bg-zinc-50 border-b"></thead>
+              <tbody id="sqlBody" class="divide-y"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs">
+          <div class="bg-zinc-900 text-zinc-100 rounded-xl p-4 code leading-relaxed">
+            <div class="text-zinc-400 mb-2">常用查询</div>
+            <div class="space-y-1">
+              <div>SELECT status, COUNT(*) FROM tickets GROUP BY status;</div>
+              <div>SELECT * FROM inbox_messages WHERE status='DEAD_LETTER' LIMIT 20;</div>
+              <div>SELECT * FROM order_monitor WHERE xlsx_synced=0;</div>
+            </div>
+          </div>
+          <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-900 leading-relaxed">
+            <b>危险操作提醒</b><br/>
+            UPDATE / DELETE 会直接修改数据，执行前会自动在 <span class="code">data/</span> 下创建 <span class="code">.bak_admin_</span> 备份。<br/>
+            建议先用 SELECT 确认影响行。
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- Row Modal -->
+<div id="rowModal" class="fixed inset-0 z-40 hidden">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="closeModal()"></div>
+  <div class="absolute inset-0 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-[720px] max-h-[88vh] flex flex-col overflow-hidden">
+      <div class="px-5 py-4 border-b border-zinc-200 flex items-center justify-between">
+        <div>
+          <div id="modalTitle" class="text-sm font-bold">编辑行</div>
+          <div id="modalSub" class="text-xs text-zinc-500 code"></div>
+        </div>
+        <button onclick="closeModal()" class="w-8 h-8 rounded-full hover:bg-zinc-100">✕</button>
+      </div>
+      <div id="modalBody" class="p-5 overflow-auto space-y-3"></div>
+      <div class="px-5 py-4 border-t border-zinc-100 flex items-center justify-end gap-2 bg-zinc-50/60">
+        <button onclick="closeModal()" class="h-9 px-4 rounded-xl border border-zinc-200 bg-white text-sm font-medium">取消</button>
+        <button onclick="submitModal()" class="h-9 px-5 rounded-xl bg-zinc-900 text-white text-sm font-medium">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Ticket Modal 新建/删除确认 -->
+<div id="ticketModal" class="fixed inset-0 z-40 hidden">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="closeTicketModal()"></div>
+  <div class="absolute inset-0 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-[560px] max-h-[88vh] flex flex-col overflow-hidden">
+      <div class="px-5 py-4 border-b border-zinc-200 flex items-center justify-between">
+        <div>
+          <div id="ticketModalTitle" class="text-[15px] font-bold">新建工单</div>
+          <div id="ticketModalSub" class="text-xs text-zinc-500 mt-0.5"></div>
+        </div>
+        <button onclick="closeTicketModal()" class="w-8 h-8 rounded-full hover:bg-zinc-100">✕</button>
+      </div>
+      <div id="ticketModalBody" class="p-5 overflow-auto space-y-4"></div>
+      <div class="px-5 py-4 border-t border-zinc-100 flex items-center justify-end gap-2 bg-zinc-50/60">
+        <button onclick="closeTicketModal()" class="h-10 px-4 rounded-xl border border-zinc-200 bg-white text-sm font-medium">取消</button>
+        <span id="ticketModalFooter"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 hidden">
+  <div id="toastMsg" class="px-4 py-2.5 rounded-full bg-zinc-900 text-white text-sm shadow-xl"></div>
+</div>
+
+<script>
+let TOKEN = localStorage.getItem('admin_token') || '';
+let TABLES=[], GROUPS=[], CUR_TABLE='', CUR_SCHEMA=[], CUR_PK='', CUR_PAGE=1, CUR_PAGE_SIZE=20, CUR_SEARCH='', CUR_ORDER_BY='', CUR_ORDER_DIR='DESC', CUR_TOTAL=0;
+let EDIT_ROW=null, IS_ADD=false;
+
+function apiHeaders(){ return {'Content-Type':'application/json','x-admin-token':TOKEN}; }
+async function api(path, opts={}){
+  opts.headers = {...apiHeaders(), ...(opts.headers||{})};
+  const r = await fetch(path, opts);
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.detail || j.error || ('HTTP '+r.status));
+  return j;
+}
+function toast(msg, ok=true){
+  const el=document.getElementById('toast'); document.getElementById('toastMsg').textContent=msg;
+  document.getElementById('toastMsg').style.background = ok ? '#18181b' : '#dc2626';
+  el.classList.remove('hidden'); setTimeout(()=>el.classList.add('hidden'), 2400);
+}
+async function doLogin(){
+  const pwd=document.getElementById('pwdInput').value;
+  try{
+    const j = await api('/api/login',{method:'POST', body: JSON.stringify({password:pwd})});
+    TOKEN=j.token; localStorage.setItem('admin_token',TOKEN);
+    await init();
+  }catch(e){ document.getElementById('loginErr').textContent=e.message; document.getElementById('loginErr').classList.remove('hidden'); }
+}
+function doLogout(){ localStorage.removeItem('admin_token'); TOKEN=''; location.reload(); }
+async function doBackup(){ try{ const j=await api('/api/backup',{method:'POST'}); toast('已备份: '+j.path.split('/').pop()); }catch(e){ toast(e.message,false);} }
+
+function toggleSidebar(){
+  const sb=document.getElementById('sidebar'); const mask=document.getElementById('mobileMask');
+  const isHidden = sb.classList.contains('hidden');
+  if(window.innerWidth<1024){
+    if(isHidden){ sb.classList.remove('hidden'); sb.classList.add('fixed','inset-0','top-[56px]','z-30'); mask.classList.remove('hidden'); }
+    else { sb.classList.add('hidden'); sb.classList.remove('fixed','inset-0','top-[56px]','z-30'); mask.classList.add('hidden'); }
+  }
+}
+
+async function init(){
+  try{
+    const me = await fetch('/api/me',{headers:apiHeaders()}).then(r=>r.json());
+    if(!me.authed) throw new Error('need login');
+  }catch{ document.getElementById('loginOverlay').classList.remove('hidden'); document.getElementById('app').classList.add('hidden'); return; }
+  document.getElementById('loginOverlay').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('nowLabel').textContent = new Date().toLocaleString('zh-CN');
+  await initExportMonth();
+  await loadTables();
+  await loadStats();
+  navTo('dashboard');
+}
+
+async function loadTables(){
+  const j = await api('/api/tables');
+  TABLES=j.tables; GROUPS=j.groups;
+  const box=document.getElementById('sidebarGroups'); box.innerHTML='';
+  for(const [gName, gTables] of GROUPS){
+    const sec=document.createElement('div');
+    sec.innerHTML=`<div class="text-[11px] font-bold tracking-widest uppercase text-zinc-400 px-3 py-2">${gName}</div>`;
+    const list=document.createElement('div'); list.className='space-y-1';
+    for(const t of gTables){
+      const meta=TABLES.find(x=>x.name===t);
+      const label = meta? meta.label : t;
+      const cnt = meta? meta.count : 0;
+      const btn=document.createElement('button');
+      btn.className='nav-btn w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-zinc-50 text-sm text-zinc-700';
+      btn.dataset.table=t;
+      btn.innerHTML=`<span class="truncate pr-2">${label}</span><span class="text-xs font-mono bg-zinc-100 px-1.5 py-0.5 rounded-full">${cnt}</span>`;
+      btn.onclick=()=>openTable(t);
+      list.appendChild(btn);
+    }
+    sec.appendChild(list); box.appendChild(sec);
+  }
+  // 兜底：未分组表也展示
+  const grouped = new Set(GROUPS.flatMap(g=>g[1]));
+  const rest = TABLES.filter(t=>!grouped.has(t.name));
+  if(rest.length){
+    const sec=document.createElement('div');
+    sec.innerHTML=`<div class="text-[11px] font-bold tracking-widest uppercase text-zinc-400 px-3 py-2">其他</div>`;
+    const list=document.createElement('div'); list.className='space-y-1';
+    rest.forEach(meta=>{
+      const btn=document.createElement('button');
+      btn.className='nav-btn w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-zinc-50 text-sm';
+      btn.innerHTML=`<span>${meta.label}</span><span class="text-xs font-mono bg-zinc-100 px-1.5 py-0.5 rounded-full">${meta.count}</span>`;
+      btn.onclick=()=>openTable(meta.name); list.appendChild(btn);
+    });
+    sec.appendChild(list); box.appendChild(sec);
+  }
+}
+
+async function loadStats(){
+  try{
+    const s=await api('/api/stats');
+    document.getElementById('dbPathLabel').textContent = s.db_path + ' · ' + (s.db_size/1024/1024).toFixed(2)+' MB';
+    const cards=[
+      ['工单总数', s.tickets_total, 'from-zinc-900 to-zinc-700'],
+      ['进行中', s.tickets_active, 'from-indigo-600 to-violet-600'],
+      ['待确认', s.tickets_pending, 'from-amber-500 to-orange-500'],
+      ['已完成', s.tickets_completed, 'from-emerald-600 to-teal-600'],
+      ['消息', s.inbox_total, 'from-sky-600 to-cyan-600'],
+      ['待处理消息', s.inbox_pending, 'from-rose-600 to-pink-600'],
+      ['死信', s.inbox_dead, 'from-red-600 to-orange-600'],
+      ['群组 / 订单', s.groups+' / '+s.orders, 'from-zinc-700 to-zinc-500'],
+    ];
+    document.getElementById('statsGrid').innerHTML = cards.map(([k,v,g])=>`
+      <div class="bg-white rounded-2xl border border-zinc-200 p-4">
+        <div class="text-xs font-semibold tracking-widest uppercase text-zinc-500">${k}</div>
+        <div class="mt-2 text-[26px] font-bold tracking-tight">${v}</div>
+        <div class="mt-3 h-1.5 rounded-full bg-gradient-to-r ${g} opacity-90"></div>
+      </div>
+    `).join('');
+    document.getElementById('recentTickets').innerHTML = (s.recent_tickets||[]).map(t=>`
+      <div class="flex items-center justify-between p-3 rounded-xl border border-zinc-100 hover:border-zinc-200 hover:bg-zinc-50">
+        <div class="min-w-0">
+          <div class="text-sm font-medium truncate">${t.ticket_no}</div>
+          <div class="text-xs text-zinc-500">${t.store_name} · ${t.created_at||''}</div>
+        </div>
+        <span class="shrink-0 text-xs px-2 py-1 rounded-full border font-medium ${statusCls(t.status)}">${t.status}</span>
+      </div>
+    `).join('') || '<div class="text-sm text-zinc-500 py-6 text-center">暂无工单</div>';
+  }catch(e){ console.error(e); }
+}
+function statusCls(s){
+  if(s==='COMPLETED') return 'bg-emerald-50 border-emerald-200 text-emerald-700';
+  if(s==='ACTIVE' || s==='ACTIVE_OVERDUE') return 'bg-indigo-50 border-indigo-200 text-indigo-700';
+  if(s==='PENDING_CONFIRM') return 'bg-amber-50 border-amber-200 text-amber-700';
+  if(s==='CANCELLED') return 'bg-zinc-100 border-zinc-200 text-zinc-600';
+  if(s==='STOPPED') return 'bg-red-50 border-red-200 text-red-700';
+  return 'bg-zinc-50 border-zinc-200';
+}
+
+function navTo(view){
+  document.querySelectorAll('section[id^="view-"]').forEach(el=>el.classList.add('hidden'));
+  document.getElementById('view-'+view).classList.remove('hidden');
+  document.querySelectorAll('.nav-btn').forEach(b=>{ b.classList.remove('bg-zinc-900','text-white'); b.classList.add('hover:bg-zinc-50','text-zinc-700'); });
+  const active=document.getElementById('nav-'+view);
+  if(active){ active.classList.add('bg-zinc-900','text-white'); active.classList.remove('hover:bg-zinc-50','text-zinc-700'); }
+  if(view==='dashboard') loadStats();
+  if(window.innerWidth<1024) toggleSidebar();
+}
+
+async function openTable(name){
+  CUR_TABLE=name; CUR_PAGE=1; CUR_SEARCH=''; document.getElementById('searchInput').value='';
+  document.querySelectorAll('#sidebarGroups .nav-btn').forEach(b=>{
+    if(b.dataset.table===name){ b.classList.add('bg-zinc-900','!text-white'); b.classList.remove('hover:bg-zinc-50'); }
+    else { b.classList.remove('bg-zinc-900','!text-white'); }
+  });
+  // fetch schema
+  const sch = await api(`/api/table/${name}/schema`);
+  CUR_SCHEMA=sch.schema; CUR_PK=sch.pk||'id';
+  document.getElementById('tableTitle').textContent = (TABLES.find(t=>t.name===name)?.label || name);
+  document.getElementById('tableMeta').textContent = `主键: ${CUR_PK} · 列: ${CUR_SCHEMA.map(c=>c.name).join(', ')}`;
+  navTo('table');
+  await reloadRows();
+}
+async function reloadRows(){
+  const q = new URLSearchParams({page:CUR_PAGE, pageSize:CUR_PAGE_SIZE, search:CUR_SEARCH, orderBy:CUR_ORDER_BY, orderDir:CUR_ORDER_DIR});
+  const j = await api(`/api/table/${CUR_TABLE}/rows?`+q.toString());
+  CUR_TOTAL=j.total;
+  renderTable(j);
+}
+function renderTable(j){
+  const head=document.getElementById('tableHead'); const body=document.getElementById('tableBody');
+  const cols=j.columns;
+  head.innerHTML = `<tr>` + cols.map(c=>{
+    const isPK=c.name===CUR_PK; const isSorted=CUR_ORDER_BY===c.name;
+    return `<th class="text-left px-3 py-2.5 font-semibold text-xs tracking-wide whitespace-nowrap select-none cursor-pointer hover:bg-zinc-100 ${isPK?'bg-amber-50/60':''}" onclick="sortBy('${c.name}')">
+      <span class="inline-flex items-center gap-1">${esc(c.name)}${isPK?' <span class="text-amber-600">●</span>':''}${isSorted? (CUR_ORDER_DIR==='ASC'?' ▲':' ▼'):''}<span class="text-zinc-400 font-normal">(${c.type})</span></span></th>`;
+  }).join('') + `<th class="px-3 py-2.5 text-right font-semibold text-xs sticky right-0 bg-zinc-50 border-l">操作</th></tr>`;
+  if(!j.rows.length){ body.innerHTML=''; document.getElementById('emptyState').classList.remove('hidden'); }
+  else {
+    document.getElementById('emptyState').classList.add('hidden');
+    body.innerHTML = j.rows.map(row=>{
+      return `<tr class="hover:bg-zinc-50/80 group">` + cols.map(c=>{
+        let v=row[c.name];
+        let display = formatCell(v, c.name);
+        return `<td class="px-3 py-2 align-top max-w-[260px] truncate text-[13px] border-t border-zinc-50" data-col="${c.name}" data-pk="${row[CUR_PK]}" ondblclick="startInlineEdit(this,'${c.name}',\`${escAttr(String(v??''))}\`)">
+          <span class="cell-text">${display}</span></td>`;
+      }).join('') + `<td class="px-3 py-2 text-right whitespace-nowrap sticky right-0 bg-white group-hover:bg-zinc-50 border-l">
+        <button onclick='openEditModal(${JSON.stringify(row).replace(/'/g,"&#39;")})' class="text-xs px-2 py-1 rounded-full border bg-white hover:bg-zinc-900 hover:text-white">编辑</button>
+        <button onclick="deleteRow('${row[CUR_PK]}')" class="text-xs px-2 py-1 rounded-full border bg-white hover:bg-red-600 hover:text-white hover:border-red-600 ml-1">删除</button>
+      </td></tr>`;
+    }).join('');
+  }
+  document.getElementById('pageLabel').textContent = `${j.page} / ${j.totalPages||1}`;
+  document.getElementById('pageInfo').textContent = `共 ${j.total} 行`;
+  document.getElementById('tableCount').textContent = j.total;
+  document.getElementById('sqlHint').textContent = `SELECT * FROM ${CUR_TABLE} LIMIT ${CUR_PAGE_SIZE}`;
+}
+
+function formatCell(v, col){
+  if(v===null || v===undefined) return '<span class="text-zinc-400 italic">NULL</span>';
+  const s=String(v);
+  if(s.length>120) return esc(s.slice(0,120))+'<span class="text-zinc-400">…</span>';
+  // JSON pretty for manager_ids etc
+  if((col.includes('ids') || col.endsWith('_json')) && (s.startsWith('[') || s.startsWith('{'))){
+    try{ const o=JSON.parse(s); return `<span class="code text-xs bg-zinc-50 px-1.5 py-0.5 rounded border">${esc(JSON.stringify(o).slice(0,100))}</span>`;}catch{}
+  }
+  if(col==='status' || col==='waiting_side') return `<span class="px-1.5 py-0.5 rounded-full border text-xs ${statusCls(s)}">${esc(s)}</span>`;
+  return esc(s);
+}
+function esc(s){ return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function escAttr(s){ return s.replace(/`/g,'&#96;').replace(/"/g,'&quot;'); }
+
+function sortBy(col){
+  if(CUR_ORDER_BY===col) CUR_ORDER_DIR = CUR_ORDER_DIR==='ASC'?'DESC':'ASC';
+  else { CUR_ORDER_BY=col; CUR_ORDER_DIR='DESC'; }
+  reloadRows();
+}
+function changePage(delta){
+  const totalPages = Math.ceil(CUR_TOTAL/CUR_PAGE_SIZE)||1;
+  const np = Math.min(totalPages, Math.max(1, CUR_PAGE+delta));
+  if(np!==CUR_PAGE){ CUR_PAGE=np; reloadRows(); }
+}
+function changePageSize(){ CUR_PAGE_SIZE=parseInt(document.getElementById('pageSizeSel').value); CUR_PAGE=1; reloadRows(); }
+let searchTimer=null;
+function debounceSearch(){ clearTimeout(searchTimer); searchTimer=setTimeout(()=>{ CUR_SEARCH=document.getElementById('searchInput').value.trim(); CUR_PAGE=1; reloadRows(); }, 350); }
+
+function startInlineEdit(td, col, raw){
+  if(td.querySelector('input')) return;
+  const span=td.querySelector('.cell-text'); const orig=span.innerHTML;
+  const pk=td.dataset.pk;
+  td.classList.add('cell-edit');
+  span.innerHTML=`<input value="${raw.replace(/"/g,'&quot;')}" />`;
+  const inp=span.querySelector('input'); inp.focus(); inp.select();
+  const finish=async(save)=>{
+    td.classList.remove('cell-edit');
+    if(!save){ span.innerHTML=orig; return; }
+    const nv=inp.value;
+    if(nv===raw){ span.innerHTML=orig; return; }
+    try{
+      await api(`/api/table/${CUR_TABLE}/rows`,{method:'PUT', body: JSON.stringify({pk:CUR_PK, pkValue:pk, data:{[col]: nv==='' ? null : nv}})});
+      toast('已更新');
+      reloadRows();
+    }catch(e){ toast(e.message,false); span.innerHTML=orig; }
+  };
+  inp.addEventListener('keydown',e=>{ if(e.key==='Enter') finish(true); if(e.key==='Escape') finish(false); });
+  inp.addEventListener('blur',()=>finish(true));
+}
+
+function openAddModal(){
+  IS_ADD=true; EDIT_ROW=null;
+  document.getElementById('modalTitle').textContent='新增行 · '+CUR_TABLE;
+  document.getElementById('modalSub').textContent='留空则为 NULL，自动备份';
+  const body=document.getElementById('modalBody'); body.innerHTML='';
+  CUR_SCHEMA.forEach(c=>{
+    if(c.pk && c.type.toUpperCase().includes('INTEGER')) return; // 自增主键跳过
+    const id='f_'+c.name;
+    body.innerHTML+=`<div>
+      <label class="text-xs font-semibold text-zinc-600">${c.name} <span class="text-zinc-400 font-normal">${c.type}${c.notnull?' · NOT NULL':''}${c.pk?' · PK':''}</span></label>
+      ${c.name==='problem_description' || c.name==='content' || c.name==='fields_json' || c.name==='payload_text' ? `<textarea id="${id}" rows="3" placeholder="${c.dflt_value||''}" class="mt-1 w-full px-3 py-2 rounded-xl border border-zinc-200 bg-zinc-50 focus:bg-white focus:border-zinc-300 outline-none text-sm code"></textarea>` : `<input id="${id}" placeholder="${c.dflt_value||''}" class="mt-1 w-full h-9 px-3 rounded-xl border border-zinc-200 bg-zinc-50 focus:bg-white focus:border-zinc-300 outline-none text-sm ${c.name.includes('json')?'code':''}" />`}
+    </div>`;
+  });
+  document.getElementById('rowModal').classList.remove('hidden');
+}
+function openEditModal(row){
+  IS_ADD=false; EDIT_ROW=row;
+  document.getElementById('modalTitle').textContent='编辑行 · '+CUR_TABLE+` #${row[CUR_PK]}`;
+  document.getElementById('modalSub').textContent=`主键 ${CUR_PK}=${row[CUR_PK]}`;
+  const body=document.getElementById('modalBody'); body.innerHTML='';
+  CUR_SCHEMA.forEach(c=>{
+    const v=row[c.name];
+    const id='f_'+c.name;
+    const val = v===null||v===undefined ? '' : String(v);
+    const disabled = c.name===CUR_PK ? 'disabled class="opacity-60"' : '';
+    const isArea = (val.length>80) || ['problem_description','content','fields_json','evidence_json','items_json','payload_text'].includes(c.name);
+    body.innerHTML+=`<div>
+      <label class="text-xs font-semibold ${c.name===CUR_PK?'text-amber-700':'text-zinc-600'}">${c.name} ${c.pk?'●':''} <span class="text-zinc-400 font-normal">${c.type}</span></label>
+      ${isArea ? `<textarea id="${id}" rows="3" ${disabled} class="mt-1 w-full px-3 py-2 rounded-xl border border-zinc-200 bg-white outline-none text-sm code">${esc(val)}</textarea>` : `<input id="${id}" value="${escAttr(val)}" ${disabled} class="mt-1 w-full h-9 px-3 rounded-xl border ${c.name===CUR_PK?'border-amber-200 bg-amber-50':'border-zinc-200 bg-white'} outline-none text-sm ${c.name.includes('json')?'code':''}" />`}
+    </div>`;
+  });
+  document.getElementById('rowModal').classList.remove('hidden');
+}
+function closeModal(){ document.getElementById('rowModal').classList.add('hidden'); }
+async function submitModal(){
+  const data={};
+  CUR_SCHEMA.forEach(c=>{
+    const el=document.getElementById('f_'+c.name);
+    if(!el || el.disabled) return;
+    let v=el.value;
+    if(v==='') v=null;
+    data[c.name]=v;
+  });
+  // 数字字段转换
+  CUR_SCHEMA.forEach(c=>{
+    if(data[c.name]===null) return;
+    if(c.type.toUpperCase().includes('INTEGER') && data[c.name]!==null){
+      const n=Number(data[c.name]); if(!isNaN(n) && String(n)===String(data[c.name]).trim()) data[c.name]=n;
+    }
+  });
+  try{
+    if(IS_ADD){
+      await api(`/api/table/${CUR_TABLE}/rows`,{method:'POST', body: JSON.stringify({data})});
+      toast('新增成功');
+    }else{
+      await api(`/api/table/${CUR_TABLE}/rows`,{method:'PUT', body: JSON.stringify({pk:CUR_PK, pkValue:EDIT_ROW[CUR_PK], data})});
+      toast('已保存');
+    }
+    closeModal(); reloadRows(); loadTables();
+  }catch(e){ toast(e.message,false); }
+}
+async function deleteRow(pkVal){
+  if(!confirm(`确定删除 ${CUR_TABLE} where ${CUR_PK}=${pkVal} ？\n会立即生效并备份。`)) return;
+  try{ await api(`/api/table/${CUR_TABLE}/rows`,{method:'DELETE', body: JSON.stringify({pk:CUR_PK, pkValue:pkVal})}); toast('已删除'); reloadRows(); loadTables(); }catch(e){ toast(e.message,false); }
+}
+function exportCSV(){
+  const q=new URLSearchParams({page:1, pageSize:10000, search:CUR_SEARCH, orderBy:CUR_ORDER_BY, orderDir:CUR_ORDER_DIR});
+  api(`/api/table/${CUR_TABLE}/rows?`+q.toString()).then(j=>{
+    if(!j.rows.length) return toast('无数据',false);
+    const cols=j.columns.map(c=>c.name);
+    const lines=[cols.join(',')].concat(j.rows.map(r=>cols.map(c=>`"${String(r[c]??'').replace(/"/g,'""')}"`).join(',')));
+    const blob=new Blob([lines.join('\n')],{type:'text/csv'}); const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=`${CUR_TABLE}.csv`; a.click(); URL.revokeObjectURL(url);
+  });
+}
+
+// SQL console
+function fillExample(kind){
+  if(kind==='select') document.getElementById('sqlInput').value="SELECT ticket_no, status, store_name, current_deadline_at FROM tickets ORDER BY id DESC LIMIT 20;";
+  if(kind==='update') document.getElementById('sqlInput').value="-- 示例：批量修复状态\nUPDATE tickets SET status='COMPLETED' WHERE id=123;";
+}
+async function execSQL(){
+  const sql=document.getElementById('sqlInput').value.trim();
+  if(!sql) return toast('请输入 SQL',false);
+  try{
+    const j=await api('/api/sql',{method:'POST', body: JSON.stringify({sql})});
+    const box=document.getElementById('sqlResult'); box.classList.remove('hidden');
+    if(j.columns){
+      document.getElementById('sqlMeta').textContent=`返回 ${j.rowcount} 行${j.truncated?' (截断至500)':''}`;
+      document.getElementById('sqlHead').innerHTML='<tr>'+j.columns.map(c=>`<th class="text-left px-3 py-2 font-semibold text-xs whitespace-nowrap">${esc(c)}</th>`).join('')+'</tr>';
+      document.getElementById('sqlBody').innerHTML=j.rows.map(r=>'<tr class="hover:bg-zinc-50">'+j.columns.map(c=>`<td class="px-3 py-1.5 truncate max-w-[240px] text-xs border-t">${formatCell(r[c], c)}</td>`).join('')+'</tr>').join('') || '<tr><td class="px-4 py-8 text-center text-zinc-500">无结果</td></tr>';
+    }else{
+      document.getElementById('sqlMeta').textContent=`执行成功 · 影响 ${j.rowcount} 行`;
+      document.getElementById('sqlHead').innerHTML=''; document.getElementById('sqlBody').innerHTML=`<tr><td class="px-4 py-6 text-sm">last_rowid=${j.lastrowid}</td></tr>`;
+      loadTables(); loadStats();
+    }
+  }catch(e){ toast(e.message,false); }
+}
+function copySQLResult(){
+  const text=document.getElementById('sqlBody').innerText;
+  navigator.clipboard.writeText(text).then(()=>toast('已复制'));
+}
+
+// ── 工单快捷管理 ──
+let TICKET_GROUPS=[], TICKET_SLA=['1天','3天','7天','待商榷'], TICKET_ROWS=[], TICKET_DEL_ID=null, CREATING=false;
+const STATUS_LABEL={'ACTIVE':'进行中','ACTIVE_OVERDUE':'已超时','PENDING_CONFIRM':'待确认','PENDING_NEGOTIATION':'待商榷','COMPLETED':'已完成','CANCELLED':'已取消','STOPPED':'已停修'};
+
+async function ensureTicketOptions(){
+  if(TICKET_GROUPS.length) return;
+  const j=await api('/api/ticket-options');
+  TICKET_GROUPS=j.groups; TICKET_SLA=j.slaLabels||TICKET_SLA;
+}
+async function openTicketView(){
+  try{ await ensureTicketOptions(); }
+  catch(e){ toast(e.message,false); return; }
+  navTo('tickets');
+  await loadTickets();
+}
+async function loadTickets(){
+  const search=(document.getElementById('ticketSearch').value||'').trim();
+  const st=document.getElementById('ticketStatusFilter').value;
+  const q=new URLSearchParams({search, status:st, limit:200});
+  try{
+    const j=await api('/api/tickets/overview?'+q.toString());
+    TICKET_ROWS=j.rows||[];
+    renderTickets();
+  }catch(e){ toast(e.message,false); }
+}
+let ticketSearchTimer=null;
+function debounceTicketSearch(){ clearTimeout(ticketSearchTimer); ticketSearchTimer=setTimeout(loadTickets,350); }
+
+// ── Excel 导出（工单 SLA 状态 / 工程师绩效，共用月份选择器与下载逻辑）──
+function defaultExportMonth(){
+  const d=new Date();
+  const firstOfThisMonth=new Date(d.getFullYear(), d.getMonth(), 1);
+  const prev=new Date(firstOfThisMonth.getTime()-86400000);
+  return `${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,'0')}`;
+}
+async function initExportMonth(){
+  const el=document.getElementById('exportMonth');
+  if(!el || el.value) return;
+  el.value=defaultExportMonth();
+  try{
+    const j=await api('/api/export/sla-default-month');
+    if(j.month) el.value=j.month;
+  }catch(e){ /* 接口不可用时用本地推算的上月兜底 */ }
+}
+function exportMonthValue(){
+  const el=document.getElementById('exportMonth');
+  const month=(el && el.value) || defaultExportMonth();
+  return /^\d{4}-\d{2}$/.test(month) ? month : null;
+}
+async function downloadXlsx(apiPath, fallbackName, btn, okLabel){
+  const month=exportMonthValue();
+  if(!month) return toast('请选择月份',false);
+  const label = btn ? btn.textContent : '';
+  if(btn){ btn.textContent='导出中…'; btn.classList.add('opacity-60'); }
+  try{
+    const r=await fetch(apiPath+'?month='+encodeURIComponent(month),{headers:apiHeaders()});
+    if(!r.ok){
+      const j=await r.json().catch(()=>({}));
+      throw new Error(j.detail || ('HTTP '+r.status));
+    }
+    const blob=await r.blob();
+    // 文件名优先用服务端 Content-Disposition（含月份、已 UTF-8 编码），取不到再兜底
+    let fname=fallbackName;
+    const cd=r.headers.get('Content-Disposition')||'';
+    const m=/filename\*=UTF-8''([^;]+)/i.exec(cd);
+    if(m){ try{ fname=decodeURIComponent(m[1]); }catch(e){} }
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download=fname;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    toast('已导出 '+month+' '+okLabel);
+  }catch(e){ toast(e.message,false); }
+  finally{ if(btn){ btn.textContent=label; btn.classList.remove('opacity-60'); } }
+}
+function exportSLAExcel(btn){
+  return downloadXlsx('/api/export/sla-xlsx','工单SLA状态.xlsx',btn,'工单SLA状态');
+}
+function exportPerformanceExcel(btn){
+  return downloadXlsx('/api/export/performance-xlsx','工程师绩效.xlsx',btn,'工程师绩效');
+}
+function renderTickets(){
+  const box=document.getElementById('ticketList');
+  document.getElementById('ticketCount').textContent=TICKET_ROWS.length;
+  if(!TICKET_ROWS.length){ box.innerHTML=''; document.getElementById('ticketEmpty').classList.remove('hidden'); return; }
+  document.getElementById('ticketEmpty').classList.add('hidden');
+  box.innerHTML=TICKET_ROWS.map(t=>{
+    const diag = t.diagnosis && t.diagnosis.items && t.diagnosis.items.length ? t.diagnosis.items.map(esc).join('；') : '<span class="text-zinc-400">未填写</span>';
+    const rep = t.repair && t.repair.repair_method ? esc(t.repair.repair_method) : '<span class="text-zinc-400">未填写</span>';
+    const ord = t.repair && t.repair.order_no ? ` · 订单号 <span class="code">${esc(t.repair.order_no)}</span>` : '';
+    return `
+    <div class="bg-white rounded-2xl border border-zinc-200 p-4 hover:border-zinc-300 transition">
+      <div class="flex items-start justify-between gap-2">
+        <div class="min-w-0">
+          <div class="text-[14px] font-bold truncate">${esc(t.ticket_no||('#'+t.id))}</div>
+          <div class="text-xs text-zinc-500 mt-0.5">${esc(t.store_name||'')} · ${esc(t.subject||'')} · ${esc(t.location||'')}</div>
+        </div>
+        <span class="shrink-0 text-xs px-2 py-1 rounded-full border font-medium ${statusCls(t.status)}">${STATUS_LABEL[t.status]||t.status}</span>
+      </div>
+      <div class="mt-2 text-[13px] text-zinc-700 leading-relaxed" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(t.problem_description||'')}</div>
+      <div class="mt-2 space-y-1 text-xs leading-relaxed">
+        <div class="text-zinc-700">🩺 故障判断：${diag}</div>
+        <div class="text-zinc-700">🔧 维修方式：${rep}${ord}</div>
+      </div>
+      <div class="mt-2 text-xs text-zinc-500">时效 ${t.sla_days? t.sla_days+'天':'待商榷'} · 截止 ${esc(t.current_deadline_at||'—')} · 建单 ${esc(t.created_at||'')}</div>
+      <div class="mt-3 flex items-center justify-end gap-2 flex-wrap">
+        <button onclick="openStatusModal(${t.id},'${t.status}')" class="h-8 px-4 rounded-full border border-zinc-200 text-xs font-semibold hover:bg-zinc-900 hover:text-white transition">编辑状态</button>
+        <button onclick="openRepairModal(${t.id})" class="h-8 px-4 rounded-full border border-indigo-200 text-indigo-700 text-xs font-semibold hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition">维修信息</button>
+        <button onclick="askDeleteTicket(${t.id})" class="h-8 px-4 rounded-full border border-red-200 text-red-600 text-xs font-semibold hover:bg-red-600 hover:text-white hover:border-red-600 transition">删除</button>
+      </div>
+    </div>`;}).join('');
+}
+function closeTicketModal(){ document.getElementById('ticketModal').classList.add('hidden'); TICKET_DEL_ID=null; CREATING=false; STATUS_EDIT_ID=null; REPAIR_EDIT_ID=null; REPAIR_SAVING=false; }
+async function openCreateModal2(){
+  try{ await ensureTicketOptions(); }
+  catch(e){ toast(e.message,false); return; }
+  document.getElementById('ticketModalTitle').textContent='新建工单';
+  document.getElementById('ticketModalSub').textContent='编号自动生成（店名-主题-时效-序号），与群内建单规则一致';
+  const opts=TICKET_GROUPS.map(g=>`<option value="${escAttr(g.group_id)}">${esc(g.store_name)}</option>`).join('');
+  const pills=TICKET_SLA.map((s,i)=>`
+    <label class="cursor-pointer">
+      <input type="radio" name="sla" value="${s}" class="peer hidden" ${s==='3天'?'checked':''}/>
+      <span class="inline-block h-9 px-4 leading-9 rounded-full border border-zinc-200 text-sm peer-checked:bg-zinc-900 peer-checked:text-white peer-checked:border-zinc-900">${s}</span>
+    </label>`).join('');
+  document.getElementById('ticketModalBody').innerHTML=`
+    <div><label class="text-xs font-semibold text-zinc-600">门店 *</label>
+      <select id="nt_group" class="mt-1 w-full h-10 px-3 rounded-xl border border-zinc-200 bg-zinc-50 text-sm outline-none">${opts}</select></div>
+    <div><label class="text-xs font-semibold text-zinc-600">主题 * <span class="font-normal text-zinc-400">（如：传奇魔法师）</span></label>
+      <input id="nt_subject" placeholder="设备/项目名称" class="mt-1 w-full h-10 px-3 rounded-xl border border-zinc-200 bg-zinc-50 text-sm outline-none"/></div>
+    <div><label class="text-xs font-semibold text-zinc-600">位置 * <span class="font-normal text-zinc-400">（如：前台）</span></label>
+      <input id="nt_location" placeholder="损坏位置" class="mt-1 w-full h-10 px-3 rounded-xl border border-zinc-200 bg-zinc-50 text-sm outline-none"/></div>
+    <div><label class="text-xs font-semibold text-zinc-600">问题描述 *</label>
+      <textarea id="nt_problem" rows="3" placeholder="具体故障现象…" class="mt-1 w-full px-3 py-2 rounded-xl border border-zinc-200 bg-zinc-50 text-sm outline-none"></textarea></div>
+    <div><label class="text-xs font-semibold text-zinc-600">时效 *</label>
+      <div class="mt-1.5 flex gap-2 flex-wrap">${pills}</div></div>`;
+  document.getElementById('ticketModalFooter').innerHTML=`<button id="nt_submit" onclick="submitCreate()" class="h-10 px-6 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">创建</button>`;
+  document.getElementById('ticketModal').classList.remove('hidden');
+}
+async function submitCreate(){
+  if(CREATING) return;
+  const payload={
+    group_id: document.getElementById('nt_group').value,
+    subject: document.getElementById('nt_subject').value.trim(),
+    location: document.getElementById('nt_location').value.trim(),
+    problem_description: document.getElementById('nt_problem').value.trim(),
+    sla_label: (document.querySelector('input[name="sla"]:checked')||{}).value || '3天',
+  };
+  if(!payload.subject) return toast('请填写主题',false);
+  if(!payload.location) return toast('请填写位置',false);
+  if(!payload.problem_description) return toast('请填写问题描述',false);
+  CREATING=true;
+  const btn=document.getElementById('nt_submit'); if(btn){ btn.textContent='创建中…'; btn.classList.add('opacity-60'); }
+  try{
+    const j=await api('/api/tickets/quick-create',{method:'POST',body:JSON.stringify(payload)});
+    toast('已建单 '+j.ticket.ticket_no);
+    closeTicketModal();
+    if(!document.getElementById('view-tickets').classList.contains('hidden')) loadTickets();
+    loadTables();
+  }catch(e){ toast(e.message,false); CREATING=false; if(btn){ btn.textContent='创建'; btn.classList.remove('opacity-60'); } }
+}
+async function askDeleteTicket(id){
+  let d;
+  try{ d=await api(`/api/tickets/${id}/dependents`); }
+  catch(e){ toast(e.message,false); return; }
+  TICKET_DEL_ID=id;
+  const t=d.ticket, counts=d.counts;
+  const NAMES={messages:'归档消息',diagnosis_versions:'故障判断',repair_method_versions:'维修方案',timeout_cycles:'超时周期',responsibility_cycles:'责任周期',message_ticket_links:'消息归属',ticket_special_cases:'特殊情况',delivery_confirmations:'签收确认',notification_deliveries:'通知记录',order_monitor:'订单监控',ticket_contexts:'用户上下文',message_attachments:'附件（保留文件，仅解绑）'};
+  const lines=Object.entries(counts).filter(([,v])=>v>0).map(([k,v])=>`<div class="flex justify-between py-1 border-b border-zinc-50 last:border-0"><span>${NAMES[k]||k}</span><b class="font-mono">${v}</b></div>`).join('') || '<div class="py-2 text-zinc-400">无关联数据</div>';
+  document.getElementById('ticketModalTitle').textContent='删除工单';
+  document.getElementById('ticketModalSub').textContent=t.ticket_no;
+  document.getElementById('ticketModalBody').innerHTML=`
+    <div class="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-800 leading-relaxed">确定删除 <b>${esc(t.ticket_no)}</b>？以下关联数据将一并删除，<b>删除前会自动备份整个数据库</b>，可在 data/ 目录找回。</div>
+    <div class="text-sm">${lines}</div>`;
+  document.getElementById('ticketModalFooter').innerHTML=`<button onclick="doDeleteTicket()" class="h-10 px-6 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700">确认删除</button>`;
+  document.getElementById('ticketModal').classList.remove('hidden');
+}
+async function doDeleteTicket(){
+  if(!TICKET_DEL_ID) return;
+  try{
+    const j=await api(`/api/tickets/${TICKET_DEL_ID}`,{method:'DELETE'});
+    toast('已删除 '+j.ticket_no);
+    closeTicketModal(); loadTickets(); loadTables();
+  }catch(e){ toast(e.message,false); }
+}
+let STATUS_EDIT_ID=null;
+const STATUS_OPTS=[
+  ['ACTIVE','进行中','非终态'],
+  ['PENDING_CONFIRM','待确认','工程师已报完工，等店长确认'],
+  ['PENDING_NEGOTIATION','待商榷','时效暂停'],
+  ['COMPLETED','已完成','写完工确认 + 关责任周期'],
+  ['CANCELLED','已取消','写取消留痕 + 关责任周期'],
+  ['STOPPED','已停修','写停修留痕 + 关责任周期'],
+];
+function openStatusModal(id, cur){
+  STATUS_EDIT_ID=id;
+  const t=TICKET_ROWS.find(r=>r.id===id);
+  document.getElementById('ticketModalTitle').textContent='编辑状态';
+  document.getElementById('ticketModalSub').textContent=t? t.ticket_no : ('#'+id);
+  document.getElementById('ticketModalBody').innerHTML=`
+    <div class="text-xs text-zinc-500">当前：<b>${STATUS_LABEL[cur]||cur}</b> · 从终态切回进行中按重开处理（清空关闭时间、重开次数 +1）</div>
+    <div class="grid grid-cols-2 gap-2">`+STATUS_OPTS.map(([v,label,desc])=>`
+      <label class="cursor-pointer">
+        <input type="radio" name="st" value="${v}" class="peer hidden" ${v===cur?'checked':''}/>
+        <div class="p-3 rounded-xl border border-zinc-200 peer-checked:border-zinc-900 peer-checked:bg-zinc-900 peer-checked:text-white transition">
+          <div class="text-sm font-semibold">${label}</div>
+          <div class="text-xs opacity-60 mt-0.5">${desc}</div>
+        </div>
+      </label>`).join('')+`</div>`;
+  document.getElementById('ticketModalFooter').innerHTML=`<button onclick="submitStatus()" class="h-10 px-6 rounded-xl bg-zinc-900 text-white text-sm font-semibold hover:bg-black">保存</button>`;
+  document.getElementById('ticketModal').classList.remove('hidden');
+}
+async function submitStatus(){
+  const sel=document.querySelector('input[name="st"]:checked');
+  if(!sel || !STATUS_EDIT_ID) return;
+  try{
+    const j=await api(`/api/tickets/${STATUS_EDIT_ID}/status`,{method:'POST',body:JSON.stringify({status:sel.value})});
+    if(j.unchanged) toast('状态未变化');
+    else toast(`已改为${STATUS_LABEL[sel.value]||sel.value}`);
+    closeTicketModal(); STATUS_EDIT_ID=null; loadTickets(); loadTables();
+  }catch(e){ toast(e.message,false); }
+}
+let REPAIR_EDIT_ID=null, REPAIR_SAVING=false;
+function openRepairModal(id){
+  const t=TICKET_ROWS.find(r=>r.id===id);
+  if(!t) return toast('工单不存在',false);
+  REPAIR_EDIT_ID=id;
+  const diagText = t.diagnosis && t.diagnosis.items ? t.diagnosis.items.join('\n') : '';
+  const repText = t.repair ? (t.repair.repair_method||'') : '';
+  const ordText = t.repair ? (t.repair.order_no||'') : '';
+  const meta = t.diagnosis || t.repair
+    ? `当前由 ${esc((t.diagnosis&&t.diagnosis.engineer_id)||(t.repair&&t.repair.engineer_id)||'—')} 提交 · 保存后写入新版本、历史保留`
+    : '当前尚未填写，保存后写入第一版';
+  document.getElementById('ticketModalTitle').textContent='编辑维修信息';
+  document.getElementById('ticketModalSub').textContent=t.ticket_no||('#'+id);
+  document.getElementById('ticketModalBody').innerHTML=`
+    <div class="text-xs text-zinc-500 leading-relaxed">${meta}</div>
+    <div><label class="text-xs font-semibold text-zinc-600">🩺 故障判断（每行一条，至少一条）</label>
+      <textarea id="rp_diag" rows="3" placeholder="如：门体下沉&#10;上侧合页松动" class="mt-1 w-full px-3 py-2 rounded-xl border border-zinc-200 bg-zinc-50 focus:bg-white outline-none text-sm">${esc(diagText)}</textarea></div>
+    <div><label class="text-xs font-semibold text-zinc-600">🔧 维修方式</label>
+      <textarea id="rp_method" rows="2" placeholder="如：淘宝采购后自行维修 / 需工程师上门" class="mt-1 w-full px-3 py-2 rounded-xl border border-zinc-200 bg-zinc-50 focus:bg-white outline-none text-sm">${esc(repText)}</textarea></div>
+    <div><label class="text-xs font-semibold text-zinc-600">📦 订单号 <span class="font-normal text-zinc-400">（维修方式含淘宝/采购时必填；无/暂无等视为未填）</span></label>
+      <input id="rp_order" value="${escAttr(ordText)}" placeholder="如 TB-2024-0001" class="mt-1 w-full h-10 px-3 rounded-xl border border-zinc-200 bg-zinc-50 focus:bg-white outline-none text-sm code"/></div>`;
+  document.getElementById('ticketModalFooter').innerHTML=`<button id="rp_submit" onclick="submitRepair()" class="h-10 px-6 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">保存</button>`;
+  document.getElementById('ticketModal').classList.remove('hidden');
+}
+async function submitRepair(){
+  if(!REPAIR_EDIT_ID || REPAIR_SAVING) return;
+  const t=TICKET_ROWS.find(r=>r.id===REPAIR_EDIT_ID);
+  const diagLines=document.getElementById('rp_diag').value.split(/\n|；|;/).map(s=>s.trim()).filter(Boolean);
+  const method=document.getElementById('rp_method').value.trim();
+  const order=document.getElementById('rp_order').value.trim();
+  if(!diagLines.length) return toast('故障判断不能为空',false);
+  if(!method) return toast('维修方式不能为空',false);
+  if((method.includes('淘宝')||method.includes('采购')) && !order) return toast('维修方式含淘宝/采购时订单号必填',false);
+  const origDiag=(t.diagnosis&&t.diagnosis.items)||[];
+  const origRep=t.repair||{};
+  const diagChanged=JSON.stringify(diagLines)!==JSON.stringify(origDiag);
+  const repChanged=method!==(origRep.repair_method||'')||order!==((origRep.order_no)||'');
+  if(!diagChanged && !repChanged) { toast('维修信息未变化'); closeTicketModal(); REPAIR_EDIT_ID=null; return; }
+  REPAIR_SAVING=true;
+  const btn=document.getElementById('rp_submit'); if(btn){ btn.textContent='保存中…'; btn.classList.add('opacity-60'); }
+  try{
+    if(diagChanged) await api(`/api/tickets/${REPAIR_EDIT_ID}/diagnosis`,{method:'POST',body:JSON.stringify({items:diagLines})});
+    if(repChanged) await api(`/api/tickets/${REPAIR_EDIT_ID}/repair-method`,{method:'POST',body:JSON.stringify({repair_method:method, order_no:order||null})});
+    toast('维修信息已保存');
+    closeTicketModal(); REPAIR_EDIT_ID=null; loadTickets();
+  }catch(e){ toast(e.message,false); }
+  finally{ REPAIR_SAVING=false; }
+}
+
+init();
+</script>
+</body>
+</html>

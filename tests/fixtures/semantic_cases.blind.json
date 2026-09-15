@@ -1,0 +1,33 @@
+[
+  {
+    "_说明": "盲测集——标签不得在调参/开发时修改，仅用于最终评测。2026-08-12：按需求改为不带 # 的自然语言（原关键词用例改自然语言表述）。",
+    "id": "BLIND-01",
+    "text": "大堂中央的空调不制冷了，出风口没有冷风，显示E3故障码，1天内要修好",
+    "expected_intent": "ticket.create",
+    "expected_fields": {
+      "subject": "空调不制冷",
+      "location": "大堂中央",
+      "problem_description": "出风口无冷风，显示E3故障码",
+      "sla": "1天"
+    },
+    "has_keyword": false
+  },
+  {
+    "id": "BLIND-02",
+    "text": "修完了没有啊？",
+    "expected_intent": "chat.ignore",
+    "expected_fields": {},
+    "has_keyword": false,
+    "_note": "自然语言疑问句——不应返回完毕等高危意图"
+  },
+  {
+    "id": "BLIND-03",
+    "text": "我看了下，灯管烧毁了，镇流器有异响，还有线路接触不良",
+    "expected_intent": "ticket.diagnosis.submit",
+    "expected_fields": {
+      "diagnosis_items": ["灯管烧毁", "镇流器异响", "线路接触不良"]
+    },
+    "sender_role": "ENGINEER",
+    "has_keyword": false
+  }
+]
