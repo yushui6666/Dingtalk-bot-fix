@@ -1,32 +1,44 @@
-# DingTalk Repair Agent
+# DingTalk Repair Multi-Agent
 
-一个运行在钉钉群里的门店报修工单 Agent。
+一个基于 **LangGraph 多 Agent 编排** 的钉钉群报修系统。
 
-店长可以直接用自然语言描述故障，系统负责识别意图、创建工单、在多张工单之间准确路由消息，并持续跟进排障、工程师处理、SLA、订单到货和完工确认。项目使用 LangGraph 规范运行流程，每张工单拥有独立的 Agent 状态和 checkpoint。
+系统采用 **Supervisor + Ticket Agents** 模式：群级 Dispatcher Graph 是 Supervisor，负责理解消息上下文并找到目标工单；每张工单都是一个独立的 Ticket Agent，持续负责自己的自助排障、工程师跟进、SLA 和完工确认。
 
-项目面向多门店共用工程团队的场景：一个钉钉群可以同时存在多张工单，同一群内消息按顺序处理，不同群可以并行运行。
+同一个群可以同时运行多张工单。所有 Ticket Agent 复用同一份 LangGraph 定义，但分别使用自己的 `thread_id` 和 checkpoint，因此上下文、阶段和处理进度不会串单。
 
-## LangGraph 流程图
+## LangGraph 多 Agent 编排图
 
 ```mermaid
-flowchart TD
-    A[钉钉群消息] --> B[Dispatcher Graph]
-    B --> C{定位所属工单}
-    C -->|ticket:id| D[独立 Ticket Agent]
+flowchart TB
+    M[钉钉群消息] --> W[InboxWorker<br/>同群串行 · 跨群并行]
 
-    D --> E[生成自助排障建议]
-    E --> F{店长反馈}
-    F -->|仍未解决| E
-    F -->|联系工程师| G[工程师跟进]
-    F -->|已经解决| I[关闭工单]
+    subgraph LG[LangGraph 多 Agent 编排层]
+        W --> D[Supervisor<br/>Dispatcher Graph]
+        D --> R{Conditional Edge<br/>消息属于哪张工单?}
 
-    G --> H[工程师报完工]
-    H --> J{店长确认}
-    J -->|没修好| G
-    J -->|确认修好| I
+        R -->|工单 12| A1[Ticket Agent #12<br/>排障 · 跟进 · 确认]
+        R -->|工单 19| A2[Ticket Agent #19<br/>排障 · 跟进 · 确认]
+        R -->|其他工单| AN[Ticket Agent #N<br/>排障 · 跟进 · 确认]
+
+        A1 <--> C1[(Checkpoint<br/>ticket:12)]
+        A2 <--> C2[(Checkpoint<br/>ticket:19)]
+        AN <--> CN[(Checkpoint<br/>ticket:N)]
+    end
+
+    A1 --> DB[(tickets.db<br/>业务真相源)]
+    A2 --> DB
+    AN --> DB
+    S[SchedulerWorker<br/>SLA · 订单 · 提醒] --> DB
+
+    classDef supervisor fill:#6c5ce7,color:#fff,stroke:#4b3fc1
+    classDef agent fill:#0984e3,color:#fff,stroke:#0769b2
+    classDef checkpoint fill:#e8f4ff,color:#16425b,stroke:#74b9ff
+    class D supervisor
+    class A1,A2,AN agent
+    class C1,C2,CN checkpoint
 ```
 
-Dispatcher 负责把消息分配到正确工单。每张工单使用自己的 `ticket:{ticket_id}` checkpoint，因此同一个群里的多张工单可以分别保存排障进度和处理阶段。
+图中的 `Ticket Agent #12`、`#19` 和 `#N` 是同时存在的逻辑 Agent。它们没有各自启动进程，而是由 LangGraph 在消息到达时按 `thread_id` 恢复对应状态。
 
 ## 主要能力
 
@@ -44,20 +56,34 @@ Dispatcher 负责把消息分配到正确工单。每张工单使用自己的 `t
 
 ## LangGraph 编排
 
-LangGraph 只负责运行流程和 Agent 阶段，现有业务规则仍由语义协议、路由器、校验器和工单执行器决定。
+LangGraph 实际承担消息节点流转、目标 Agent 选择和工单级 checkpoint 恢复；具体业务规则仍由原有业务能力层执行。
 
-系统分为两层 Graph：
+| LangGraph 组件 | 在项目中的作用 |
+|---|---|
+| `StateGraph` | 定义 Dispatcher 和 Ticket Agent 的节点、状态与流转关系 |
+| Dispatcher Graph | 充当 Supervisor，每条群消息运行一次并选择目标 Ticket Agent |
+| Conditional Edge | 根据业务处理结果和工单归属决定继续、结束或调用哪张工单 |
+| Ticket Agent Graph | 处理单张工单的排障、转工程师、等待配件和完工确认 |
+| `thread_id` | 将同一份 Ticket Agent Graph 实例化为多张互不串线的逻辑 Agent |
+| Async SQLite Saver | 持久化每个 Ticket Agent 的阶段、摘要和最近运行结果 |
 
-1. **Dispatcher Graph** 每收到一条 Inbox 消息运行一次，依次完成消息准备、附件归档、上下文加载、业务处理、工单定位和 Ticket Agent 调用。
-2. **Ticket Agent Graph** 按工单运行，保存这张工单的排障摘要、当前阶段、最近反馈和生成的建议。
-
-每张工单使用固定 thread ID：
+多 Agent 的关键不是复制多份代码，而是用同一张 Ticket Agent Graph 创建多个独立状态空间：
 
 ```text
-ticket:{ticket_id}
+同一群消息
+  └─ Dispatcher Graph（Supervisor）
+       ├─ ticket:12 → Ticket Agent #12
+       ├─ ticket:19 → Ticket Agent #19
+       └─ ticket:27 → Ticket Agent #27
 ```
 
-例如同一个群内的工单 12 和工单 19 分别使用 `ticket:12` 和 `ticket:19`。两张工单共用同一个已编译的 Graph，但 checkpoint、对话摘要和处理阶段互不影响。
+Dispatcher 不保存跨消息的长期对话。Ticket Agent 才拥有工单级记忆，每张工单固定使用：
+
+```text
+thread_id = ticket:{ticket_id}
+```
+
+LangGraph 保存的是“Agent 下一步应该做什么”，例如继续排障、等待店长、跟进工程师或等待确认。工单状态、消息、订单和 SLA 仍由 `tickets.db` 管理，现有语义协议、Router、Validator 和 Executor 继续决定业务结果。
 
 Agent 阶段包括：
 
