@@ -236,6 +236,11 @@ class SemanticClassifier:
         self._client = client
         self._protocol = protocol
 
+    @property
+    def model_client(self) -> Any:
+        """复用同一模型客户端给 LangGraph 的反馈分类与排障建议节点。"""
+        return self._client
+
     async def classify(
         self,
         message: NormalizedMessage,

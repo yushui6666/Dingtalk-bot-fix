@@ -13,6 +13,7 @@
 - **部署形态**：单进程 asyncio 长驻服务 + SQLite（WAL）。
 - **钉钉接入**：通过 `dws` CLI（钉钉工作台命令行）监听群消息、发送群通知、读写 AI 表格。
 - **语义理解**：OpenAI-compatible 云端文本模型 + 独立视觉模型，均可用环境变量切换供应商。
+- **流程编排**：LangGraph Dispatcher 处理每条消息；每张工单使用独立 checkpoint 的逻辑 Agent。
 - **设计原则**：关键词 JSON 是唯一业务真相；大模型只负责"理解"，规则引擎负责"执行"；不确定时澄清而非猜测。
 - **AI 表格看板**：本地 SQLite 为真相源，定时把工单同步到钉钉 AI 表格（Kanban 看板 + 仪表盘 + 工程师门店导航视图）。
 
@@ -21,7 +22,18 @@
 ### 2.1 分层
 
 ```
-钉钉群 ──dws event──▶ event_listener ──▶ event_normalizer ──▶ pipeline ──▶ tickets/executor
+钉钉群 ──dws event──▶ event_listener ──▶ event_normalizer ──▶ InboxWorker
+                                                                    │
+                                                                    ▼
+                                                        LangGraph Dispatcher
+                                                                    │
+                                             ┌──────────────────────┴──────────────────────┐
+                                             ▼                                             ▼
+                               Ticket Agent (ticket:1)                       Ticket Agent (ticket:N)
+                                             │                                             │
+                                             └──────────────────────┬──────────────────────┘
+                                                                    ▼
+                                                现有 classifier/router/validator/executor
                                                                     │
                     ┌──────────────────────────────────────────────────┘
                     ▼
@@ -37,9 +49,11 @@
 
 1. `event_listener` 为每个群启动 `dws event +listen-im` 子进程，NDJSON 逐行消费。
 2. `event_normalizer` 把原始事件标准化为 `NormalizedMessage`（含角色、引用、图片附件）。
-3. `pipeline` 处理每一条消息：显式关键词快路径 → 云端语义匹配 → 本地协议校验 → 路由到工单 → 执行器落库。
-4. 图片附件先由 `images/archive` 安全归档，再由 `images/vision` 多模态解析，作为附件证据参与语义判断。
-5. 所有外部通知写入 Outbox，事务提交后由 `notifier` 异步发送。
+3. `pipeline` 保持原调用接口，把消息交给 Dispatcher Graph；图节点复用现有关键词、云端语义、本地协议校验、路由和执行器。
+4. 消息归属工单后，以 `ticket:{ticket_id}` 恢复该工单的 Ticket Agent Graph。单群多工单共用图定义，各自保存排障摘要和处理阶段。
+5. 自助排障采用关键词 + LLM 判断店长反馈。RAG 已预留统一接口，当前 `NullKnowledgeRetriever` 返回空文档，不需要外部知识库服务。
+6. 图片附件先由 `images/archive` 归档，再由 `images/vision` 多模态解析，作为附件证据参与语义判断。
+7. 所有外部通知写入 Outbox，事务提交后由 `notifier` 发送。
 
 ## 三、模块
 
@@ -49,6 +63,7 @@
 | `event_listener.py` | 多群消息监听（dws listen-im 子进程） |
 | `event_normalizer.py` | 事件 → 标准化消息 |
 | `pipeline.py` | 核心处理管道：关键词/语义、路由、确认、执行编排 |
+| `graphs/` | LangGraph Dispatcher、按工单隔离的 Agent、checkpoint 生命周期与空 RAG 接口 |
 | `db.py` | SQLite 数据层：schema、迁移、事务、工单/收件箱/附件/待确认 |
 | `models.py` | 数据模型与角色/状态枚举 |
 | `config.py` | 全局配置（路径、群配置、模型、图片、看板同步） |
@@ -82,6 +97,7 @@ pip install -r requirements.txt
 
 - 群与成员配置：`data/groups.json`（默认）或 `data/group-test.json`（测试），含每个门店群的角色 userId。
 - 密钥与模型：通过环境变量注入，见 `config.py` 顶部（`LLM_*`、`VISION_*`、`AITABLE_SYNC_*`）。
+- LangGraph：`LANGGRAPH_ENABLED=true`，checkpoint 默认写入 `data/langgraph-checkpoints.sqlite`；`RAG_ENABLED=false` 时使用空检索器。
 - 群配置切换：启动时 `--test` 或 `--groups-config <path>`。
 
 ### 4.3 运行
@@ -97,10 +113,10 @@ python main.py --mode ASSISTED
 python main.py --mode SHADOW
 ```
 
-### 4.4 测试
+### 4.4 语法检查
 
 ```bash
-pytest tests/ -q
+python -m compileall -q .
 ```
 
 ## 五、核心概念

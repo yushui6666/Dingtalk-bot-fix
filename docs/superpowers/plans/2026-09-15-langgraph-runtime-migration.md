@@ -10,6 +10,10 @@
 
 ---
 
+## Execution override (2026-09-15)
+
+The project owner explicitly requested that this personal project add and run no functional, security, encryption, or behavior tests. All test-writing and pytest steps below are superseded. Implementation verification is limited to Python syntax compilation with `python -m compileall -q .`. No SHA-based validation or additional security test is introduced.
+
 ## File map
 
 **Create**

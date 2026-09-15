@@ -78,6 +78,29 @@ class Notifier:
         except Exception as exc:
             logger.warning("即时回复发送失败 group=%s err=%s", group_id, exc)
 
+    def send_agent_message(self, group_id: str, text: str, *, message_id: str) -> None:
+        """发送工单 Agent 回复，使用独立去重键避免覆盖业务动作回执。"""
+        if not self._enabled:
+            logger.info("影子模式：跳过 Agent 回复 group=%s msg=%s", group_id, message_id)
+            return
+        notification_id = self._db.insert_notification(
+            dedupe_key=f"agent:{message_id}",
+            ticket_id=None,
+            notification_type="agent_guidance",
+            target_type="group",
+            target_id=group_id,
+            payload_text=text,
+        )
+        if not notification_id:
+            return
+        self._db.record_system_reply(group_id, f"sys:agent:{message_id}", text)
+        try:
+            self._sender(group_id, text)
+            self._db.mark_notification(notification_id, "SENT")
+        except Exception as exc:
+            self._db.mark_notification(notification_id, "FAILED", error=str(exc))
+            logger.warning("Agent 回复发送失败 group=%s err=%s", group_id, exc)
+
     def send_deduped_group(self, group_id: str, text: str, *, dedupe_key: str) -> bool:
         """按 dedupe_key 去重的群消息（同一 key 只发一次，用于定时提醒）。
 

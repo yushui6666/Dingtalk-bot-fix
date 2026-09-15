@@ -18,7 +18,13 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from config import LLM_ENABLED, LLM_MAX_ATTEMPTS, LLM_RETRY_DELAYS_SECONDS
+from config import (
+    LANGGRAPH_CHECKPOINT_PATH,
+    LANGGRAPH_ENABLED,
+    LLM_ENABLED,
+    LLM_MAX_ATTEMPTS,
+    LLM_RETRY_DELAYS_SECONDS,
+)
 from db import Database
 from logger import get_logger
 from models import (
@@ -165,9 +171,52 @@ class MessageProcessingPipeline:
         self._max_attempts = max_attempts
         self._retry_delays = retry_delays
         self._vision_tasks: list[asyncio.Task] = []
+        self._graph_enabled = LANGGRAPH_ENABLED
+        self._graph_runtime: Any | None = None
+        self._graph_runtime_lock = asyncio.Lock()
 
     async def process(self, item: dict[str, Any]) -> str:
-        """处理一条收件箱消息，返回最终收件箱状态。"""
+        """通过 Dispatcher Graph 处理消息，保持 InboxWorker 的原接口不变。"""
+        if not self._graph_enabled:
+            return await self._process_without_graph(item)
+        if self._graph_runtime is None:
+            async with self._graph_runtime_lock:
+                if self._graph_runtime is None:
+                    from graphs.runtime import GraphRuntime
+
+                    model_client = (
+                        getattr(self._classifier, "model_client", None)
+                        if self._classifier is not None
+                        else None
+                    )
+                    self._graph_runtime = GraphRuntime(
+                        pipeline=self,
+                        checkpoint_path=LANGGRAPH_CHECKPOINT_PATH,
+                        model_client=model_client,
+                    )
+        return await self._graph_runtime.process(item)
+
+    @property
+    def graph_runtime(self) -> Any | None:
+        return self._graph_runtime
+
+    async def aclose(self) -> None:
+        if self._graph_runtime is not None:
+            await self._graph_runtime.aclose()
+
+    async def _process_without_graph(self, item: dict[str, Any]) -> str:
+        """迁移期开关使用的原流程；业务实现仍与 Graph 节点共用。"""
+        msg = self.graph_prepare_message(item)
+        await self.graph_archive_attachments(msg)
+        try:
+            status = await self.graph_process_business(item, msg)
+            logger.info("消息处理完成 msg=%s status=%s", msg.message_id, status)
+            return status
+        except Exception as exc:
+            return self.graph_handle_exception(item, msg, exc)
+
+    # ─────────────────────── LangGraph 节点适配 ───────────────────────
+    def graph_prepare_message(self, item: dict[str, Any]) -> NormalizedMessage:
         msg = _row_to_message(item)
         # 从 DB 恢复附件（入箱时已写 message_attachments 元数据）
         try:
@@ -192,15 +241,149 @@ class MessageProcessingPipeline:
             "消息处理开始 msg=%s group=%s sender=%s role=%s type=%s",
             msg.message_id, msg.group_id, msg.sender_id[:8], msg.sender_role, msg.message_type,
         )
+        return msg
+
+    async def graph_archive_attachments(self, msg: NormalizedMessage) -> None:
         if self._mode != RuntimeMode.SHADOW:
             await self._archive_attachments(msg)
+
+    def graph_load_dispatch_context(self, msg: NormalizedMessage) -> dict[str, Any]:
+        active = self._repo.snapshot_candidates(msg.group_id)
+        pending = self._pending.get_waiting(msg.group_id, msg.sender_id)
+        return {
+            "pending_action_id": pending.id if pending is not None else None,
+            "quoted_ticket_id": (
+                self._db.get_quoted_ticket_id(msg.reply_to_message_id)
+                if msg.reply_to_message_id else None
+            ),
+            "selected_ticket_id": self._context.get_active(
+                msg.group_id, msg.sender_id, datetime.now()
+            ),
+            "candidate_ticket_ids": [item.ticket_id for item in active],
+        }
+
+    async def graph_process_business(
+        self, item: dict[str, Any], msg: NormalizedMessage
+    ) -> str:
+        return await self._handle(msg, item)
+
+    def graph_resolve_agent_ticket(self, msg: NormalizedMessage) -> int | None:
+        """在既有业务处理后定位逻辑 Agent；不改变原工单路由结果。"""
+        if self._mode == RuntimeMode.SHADOW:
+            return None
+        link = self._db.get_message_link(msg.message_id)
+        if link is not None:
+            ticket_id = int(link["ticket_id"])
+            if link.get("link_type") == "CREATE":
+                self._context.select(
+                    msg.group_id,
+                    msg.sender_id,
+                    ticket_id,
+                    order_key=f"{msg.sent_at.strftime('%Y-%m-%d %H:%M:%S')}|{msg.message_id}",
+                    now=msg.sent_at,
+                )
+            return ticket_id
+
+        candidates = self._repo.snapshot_candidates(
+            msg.group_id,
+            statuses=(TICKET_ACTIVE, TICKET_OVERDUE, TICKET_PENDING_CONFIRM, TICKET_NEGOTIATING),
+        )
+        candidate_ids = {item.ticket_id for item in candidates}
+        if msg.reply_to_message_id:
+            quoted = self._db.get_quoted_ticket_id(msg.reply_to_message_id)
+            if quoted in candidate_ids:
+                return quoted
+
+        decision = self._db.get_latest_semantic_decision(msg.message_id)
+        target_no = str((decision or {}).get("target_ticket_no") or "")
+        if target_no:
+            exact = [item for item in candidates if item.ticket_no == target_no]
+            if len(exact) == 1:
+                return exact[0].ticket_id
+
+        mentioned = _mentioned_ticket_numbers(msg.content)
+        if mentioned:
+            suffix_matches = [
+                item for item in candidates
+                if item.ticket_no.rsplit("-", 1)[-1].lstrip("0") in mentioned
+            ]
+            if len(suffix_matches) == 1:
+                return suffix_matches[0].ticket_id
+
+        selected = self._context.get_active(msg.group_id, msg.sender_id, datetime.now())
+        if selected in candidate_ids:
+            return selected
+        if len(candidates) == 1:
+            return candidates[0].ticket_id
+        return None
+
+    def graph_build_ticket_event(self, message: dict[str, Any]) -> dict[str, Any]:
+        event = dict(message)
+        message_id = str(event.get("message_id") or "")
+        link = self._db.get_message_link(message_id)
+        decision = self._db.get_latest_semantic_decision(message_id)
+        event["link_type"] = link.get("link_type") if link else None
+        event["semantic_intent"] = decision.get("intent") if decision else None
+        event["semantic_fields"] = decision.get("fields") if decision else {}
+        return event
+
+    def graph_load_ticket(self, ticket_id: int) -> dict[str, Any] | None:
+        return self._db.get_ticket(ticket_id)
+
+    def graph_persist_agent_event(self, ticket_id: int, event: dict[str, Any]) -> None:
+        """把未被业务命令消费的排障反馈归档到对应工单。"""
+        message_id = str(event.get("message_id") or "")
+        if not message_id or self._db.get_message_link(message_id) is not None:
+            return
+        sent_at = str(event.get("sent_at") or "")
         try:
-            status = await self._handle(msg, item)
-            logger.info("消息处理完成 msg=%s status=%s", msg.message_id, status)
-            return status
-        except Exception as exc:
-            logger.exception("消息处理异常 message_id=%s err=%s", msg.message_id, exc)
-            return self._retry_or_dead(item, msg, str(exc))
+            sent_at_db = datetime.fromisoformat(sent_at).strftime("%Y-%m-%d %H:%M:%S")
+        except (TypeError, ValueError):
+            sent_at_db = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with self._db.transaction("langgraph_agent_event"):
+            self._db.link_message(message_id, ticket_id, "AGENT_CONTEXT", 1.0)
+            self._db.add_ticket_message(
+                message_id,
+                ticket_id,
+                str(event.get("sender_id") or ""),
+                str(event.get("sender_role") or "UNKNOWN"),
+                str(event.get("content") or ""),
+                str(event.get("message_type") or "text"),
+                sent_at_db,
+            )
+
+    def graph_notify_agent(self, group_id: str, text: str, message_id: str) -> None:
+        send = getattr(self._notifier, "send_agent_message", None)
+        if send is not None:
+            send(group_id, text, message_id=message_id)
+        else:
+            self._notifier.send_group_now(group_id, text, message_id=message_id)
+
+    def graph_handle_exception(
+        self,
+        item: dict[str, Any],
+        msg: NormalizedMessage | None,
+        exc: Exception,
+    ) -> str:
+        msg = msg or _row_to_message(item)
+        logger.error("消息处理异常 message_id=%s err=%s", msg.message_id, exc)
+        return self._retry_or_dead(item, msg, str(exc))
+
+    def graph_record_completion(self, state: dict[str, Any]) -> None:
+        message = state.get("message") or {}
+        logger.info(
+            "LangGraph 消息处理完成 msg=%s status=%s ticket_thread=%s path=%s",
+            message.get("message_id"),
+            state.get("processed_status"),
+            state.get("ticket_thread_id") or "-",
+            " -> ".join(state.get("graph_path") or ()),
+        )
+        if state.get("agent_error"):
+            logger.warning(
+                "Ticket Agent 未完成 msg=%s err=%s",
+                message.get("message_id"),
+                state["agent_error"],
+            )
 
     # ─────────────────────── 主流程 ───────────────────────
     async def _handle(self, msg: NormalizedMessage, item: dict[str, Any]) -> str:

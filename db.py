@@ -966,6 +966,24 @@ class Database:
             )
         return cur.lastrowid
 
+    def get_latest_semantic_decision(self, message_id: str) -> dict[str, Any] | None:
+        """返回消息最后一次语义决策，供 LangGraph 工单事件归一化使用。"""
+        row = self.connect().execute(
+            "SELECT * FROM semantic_decisions WHERE message_id=? ORDER BY id DESC LIMIT 1",
+            (message_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        for key in ("fields_json", "missing_fields_json", "evidence_json", "errors_json"):
+            raw = result.get(key)
+            if raw:
+                try:
+                    result[key.removesuffix("_json")] = json.loads(raw)
+                except (TypeError, json.JSONDecodeError):
+                    result[key.removesuffix("_json")] = None
+        return result
+
     # ─────────────────────── 消息归属 message_ticket_links ───────────────────────
     def link_message(
         self, message_id: str, ticket_id: int, link_type: str, routing_score: float = 0.0

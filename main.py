@@ -212,6 +212,7 @@ async def main(
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        await pipeline.aclose()
         if archiver is not None:
             await archiver.aclose()
         # 兜底：趁事件循环仍存活强制回收一次，让仍被引用链（异常回溯环等）

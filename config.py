@@ -60,6 +60,23 @@ SUMMARY_OUTPUT_PATH = BASE_DIR / "data" / "summary" / "维修工单汇总.json"
 LOG_DIR = BASE_DIR / "logs"
 LOG_LEVEL = "INFO"
 
+# LangGraph 只负责编排现有业务流程；tickets.db 仍是业务真相源。
+LANGGRAPH_ENABLED = _os.environ.get("LANGGRAPH_ENABLED", "true").lower() in (
+    "true", "1", "yes", "on",
+)
+_langgraph_checkpoint_path = Path(
+    _os.environ.get("LANGGRAPH_CHECKPOINT_PATH", "data/langgraph-checkpoints.sqlite")
+)
+LANGGRAPH_CHECKPOINT_PATH = (
+    _langgraph_checkpoint_path
+    if _langgraph_checkpoint_path.is_absolute()
+    else BASE_DIR / _langgraph_checkpoint_path
+)
+# RAG 尚未定型：保留开关与接口，当前默认使用空检索器。
+RAG_ENABLED = _os.environ.get("RAG_ENABLED", "false").lower() in (
+    "true", "1", "yes", "on",
+)
+
 # 群与成员配置文件（50 群/几百人规模用，可被环境变量 GROUPS_CONFIG_PATH 覆盖）
 # - 生产：data/groups.json（全部门店群）
 # - 测试：data/group-test.json（测试群，通过 --test 或 GROUPS_CONFIG_PATH 切换）
