@@ -8,101 +8,82 @@
 
 ## LangGraph 多 Agent 编排图
 
-系统不是一条直线流水线，而是「消息路由」加「每张工单各自循环」两层。Dispatcher 只回答“这条消息属于哪张工单”；真正的 Agent 行为发生在 Ticket Agent 的循环里——被消息唤醒、按 `thread_id` 恢复自己的 checkpoint、判断事件、执行一个动作、把结果写回业务库，然后休眠；下一条属于该工单的消息会让同一个循环再转一圈。
-
 ```mermaid
 flowchart TB
-    M["钉钉群消息"] --> W["InboxWorker<br/>跨群识别并行 · 群级 OrderedCommitGate 有序提交"]
-    W --> D
+    M[钉钉群消息] --> W[InboxWorker<br/>不同群协程并行]
+    W --> GA[群 A：消息识别并行]
+    W --> GB[群 B：消息识别并行]
+    GA --> QA[群 A：OrderedCommitGate<br/>按 sent_at + message_id 有序提交]
+    GB --> QB[群 B：OrderedCommitGate<br/>按 sent_at + message_id 有序提交]
 
-    subgraph DISP["Dispatcher Graph（Supervisor）：每条群消息跑一次"]
-        direction TB
-        D["prepare_message → archive_attachments<br/>→ load_dispatch_context"]
-        B["process_business<br/>语义识别 · Router · Validator · Executor"]
-        R{"resolve_ticket_agent<br/>这条消息属于哪张工单？"}
-        D --> B --> R
+    subgraph LG[LangGraph 多 Agent 编排层]
+        QA --> D[Supervisor<br/>Dispatcher Graph]
+        QB --> D
+        D --> R{Conditional Edge<br/>消息属于哪张工单?}
+
+        R -->|工单 12| A1[Ticket Agent #12<br/>排障 · 跟进 · 确认]
+        R -->|工单 19| A2[Ticket Agent #19<br/>排障 · 跟进 · 确认]
+        R -->|其他工单| AN[Ticket Agent #N<br/>排障 · 跟进 · 确认]
+
+        A1 <--> C1[(Checkpoint<br/>ticket:12)]
+        A2 <--> C2[(Checkpoint<br/>ticket:19)]
+        AN <--> CN[(Checkpoint<br/>ticket:N)]
     end
 
-    R -->|"闲聊 / 多候选澄清 / 仅审计"| FIN["finalize_inbox<br/>本轮结束"]
-    R -->|"ticket:19 · ticket:N"| AN(["唤醒 Ticket Agent #19 / #N<br/>同一份 Graph，各自循环"])
-    R -->|"ticket:12"| WAKE
-
-    subgraph LOOP["Ticket Agent 循环：thread_id = ticket:12"]
-        direction TB
-        WAKE(["被消息唤醒<br/>按 thread_id 恢复 checkpoint"])
-        LOAD["load_ticket_state<br/>重读 tickets.db，校正 agent_stage"]
-        DETECT["detect_ticket_event<br/>这条消息是什么事件"]
-        ROUTE{"route_event"}
-        TROUBLE["build_retrieval_query<br/>→ retrieve_knowledge<br/>→ generate_guidance"]
-        GUIDE["persist_and_notify_guidance<br/>落库 + 群内发出排障建议<br/>stage = WAITING_MANAGER"]
-        HAND["handoff_engineer<br/>通知已转工程师<br/>stage = ENGINEER_TRACKING"]
-        SYNC["sync_lifecycle<br/>按工单业务状态同步 stage"]
-        SLEEP(["本轮 END：checkpoint 落盘<br/>Agent 休眠，等待下一条消息"])
-
-        WAKE --> LOAD --> DETECT --> ROUTE
-        ROUTE -->|"NEW_ISSUE / UNSOLVED"| TROUBLE
-        TROUBLE --> GUIDE
-        ROUTE -->|"HANDOFF"| HAND
-        ROUTE -->|"RESOLVED / ENGINEER_* / PASSIVE / CLOSED"| SYNC
-        GUIDE --> SLEEP
-        HAND --> SLEEP
-        SYNC --> SLEEP
-    end
-
-    SLEEP -.->|"下一条属于本单的消息"| WAKE
-
-    DB[("tickets.db<br/>业务真相源")]
-    LOAD -.只读校正.-> DB
-    GUIDE -.写入事件与阶段.-> DB
-    SYNC -.写入阶段.-> DB
-    SCH["SchedulerWorker<br/>SLA · 订单 · 看板同步"] --> DB
+    A1 --> DB[(tickets.db<br/>业务真相源)]
+    A2 --> DB
+    AN --> DB
+    S[SchedulerWorker<br/>SLA · 订单 · 提醒] --> DB
 
     classDef supervisor fill:#6c5ce7,color:#fff,stroke:#4b3fc1
     classDef agent fill:#0984e3,color:#fff,stroke:#0769b2
-    classDef idle fill:#e8f4ff,color:#16425b,stroke:#74b9ff
-    classDef db fill:#fff4e6,color:#5c3d00,stroke:#e17055
-    class D,B,FIN supervisor
-    class LOAD,DETECT,ROUTE,TROUBLE,GUIDE,HAND,SYNC agent
-    class WAKE,SLEEP,AN idle
-    class DB,SCH db
+    classDef checkpoint fill:#e8f4ff,color:#16425b,stroke:#74b9ff
+    class D supervisor
+    class A1,A2,AN agent
+    class C1,C2,CN checkpoint
 ```
 
-图中的 `Ticket Agent #12`、`#19` 和 `#N` 是同时存在的逻辑 Agent。消息识别可并行，但路由提交不乱序；提交完成后，不同工单可并行执行，同一工单由 `GraphRuntime` 的工单级锁串行恢复状态。它们没有各自启动进程，而是由 LangGraph 按 `thread_id` 恢复对应状态；Dispatcher Graph 本身不保存跨消息记忆，长期记忆只存在于各工单的 checkpoint 中。
+图中的 `Ticket Agent #12`、`#19` 和 `#N` 是同时存在的逻辑 Agent。消息识别可并行，但路由提交不乱序；提交完成后，不同工单可并行执行，同一工单由 `GraphRuntime` 的工单级锁串行恢复状态。它们没有各自启动进程，而是由 LangGraph 按 `thread_id` 恢复对应状态。
 
-循环里有两个方向：一条是「被唤醒后做什么」的主链路（唤醒 → 恢复 → 判断 → 行动），另一条是「本轮结束、等下一次唤醒」的回边（`SLEEP -.-> WAKE`）。所以 Agent 的一次运行只处理一条消息，跨消息的连续性由 checkpoint 和 `tickets.db` 共同维持。
+## Agent Loop：工单 Agent 的循环
 
-`load_ticket_state` 是循环的校正点：Agent 每次被唤醒都重读 `tickets.db`，用真实工单状态覆盖 checkpoint 里的 `agent_stage`。checkpoint 只回答“上次停在哪一步”，业务事实永远以数据库为准。
-
-### Agent 阶段不是单向推进
-
-阶段之间有两条明确的回边：店长说“还是不行”会把 Agent 拉回排障循环；店长说“没修好”会把 Agent 从待确认拉回工程师跟进。
+上面那张图回答的是“消息去哪张工单”，这一张回答的是“到了工单之后 Agent 怎么运转”。Ticket Agent 不是跑一次就结束的函数，而是一个被消息反复唤醒的循环：每轮只处理一条消息，处理完把自己的位置存进 checkpoint 就休眠，等下一条消息到来再转一圈。
 
 ```mermaid
-stateDiagram-v2
-    direction LR
-    [*] --> TRIAGE
-    TRIAGE --> SELF_SERVICE: 新故障 / 店长反馈未解决
-    SELF_SERVICE --> WAITING_MANAGER: 排障建议已发出
-    WAITING_MANAGER --> SELF_SERVICE: 还是不行（UNSOLVED）
-    WAITING_MANAGER --> ENGINEER_TRACKING: 联系工程师（HANDOFF）
-    ENGINEER_TRACKING --> WAITING_PARTS: 等待配件 / 待协商（PENDING_NEGOTIATION）
-    WAITING_PARTS --> ENGINEER_TRACKING: 配件到货或继续处理
-    ENGINEER_TRACKING --> WAITING_CONFIRM: 工程师报完工（ENGINEER_COMPLETED）
-    WAITING_CONFIRM --> ENGINEER_TRACKING: 店长反馈没修好（MANAGER_REJECTED）
-    WAITING_CONFIRM --> CLOSED: 店长确认修好
-    SELF_SERVICE --> CLOSED: 工单进入 COMPLETED / CANCELLED / STOPPED
-    WAITING_MANAGER --> CLOSED: 工单进入 COMPLETED / CANCELLED / STOPPED
-    ENGINEER_TRACKING --> CLOSED: 工单进入 COMPLETED / CANCELLED / STOPPED
-    WAITING_PARTS --> CLOSED: 工单进入 COMPLETED / CANCELLED / STOPPED
-    CLOSED --> [*]
+flowchart TB
+    WAKE(["① 被消息唤醒<br/>按 thread_id = ticket:N 恢复 checkpoint"])
+    LOAD["② load_ticket_state<br/>重读 tickets.db，校正 agent_stage"]
+    DETECT["③ detect_ticket_event<br/>这条消息是什么事件"]
+    ROUTE{"④ route_event"}
+    TROUBLE["⑤ build_retrieval_query<br/>→ retrieve_knowledge<br/>→ generate_guidance"]
+    NOTIFY["⑤ persist_and_notify_guidance<br/>落库 + 群内发出排障建议<br/>stage = WAITING_MANAGER"]
+    HAND["⑤ handoff_engineer<br/>通知已转工程师<br/>stage = ENGINEER_TRACKING"]
+    SYNC["⑤ sync_lifecycle<br/>按工单业务状态同步 stage"]
+    SLEEP(["⑥ 本轮 END<br/>checkpoint 落盘，Agent 休眠"])
+
+    WAKE --> LOAD --> DETECT --> ROUTE
+    ROUTE -->|"NEW_ISSUE / UNSOLVED"| TROUBLE
+    TROUBLE --> NOTIFY
+    ROUTE -->|"HANDOFF"| HAND
+    ROUTE -->|"RESOLVED / ENGINEER_* / PASSIVE / CLOSED"| SYNC
+    NOTIFY --> SLEEP
+    HAND --> SLEEP
+    SYNC --> SLEEP
+    SLEEP -.->|"下一条属于本工单的消息"| WAKE
+
+    classDef step fill:#0984e3,color:#fff,stroke:#0769b2
+    classDef idle fill:#e8f4ff,color:#16425b,stroke:#74b9ff
+    class LOAD,DETECT,ROUTE,TROUBLE,NOTIFY,HAND,SYNC step
+    class WAKE,SLEEP idle
 ```
 
-| 回边 | 触发 | 结果 |
-|---|---|---|
-| `WAITING_MANAGER → SELF_SERVICE` | 店长反馈仍然不行（`UNSOLVED`） | 重新生成一轮排障建议，本轮结束时仍回到 `WAITING_MANAGER` |
-| `WAITING_CONFIRM → ENGINEER_TRACKING` | 店长反馈没修好（`MANAGER_REJECTED`） | 回到工程师跟进，继续记录处理进度 |
+循环的两端各自承担一半连续性：
 
-`SELF_SERVICE` 只在一次运行内部存在：它由 `build_retrieval_query` 写入，`persist_and_notify_guidance` 发出建议后立刻落到 `WAITING_MANAGER`。进入 `CLOSED` 后循环不再产生动作（`detect_ticket_event` 直接判定为 `CLOSED`，只由 `sync_lifecycle` 收尾），其余阶段都会在下一条消息到来时继续循环。
+- **唤醒端（②）**：`load_ticket_state` 每次被唤醒都重读 `tickets.db`，用真实工单状态校正 `agent_stage`。checkpoint 只回答“上次停在哪一步”，业务事实永远以数据库为准。
+- **休眠端（⑥）**：三个分支最终都收敛到本轮 END，checkpoint 落盘；下一条属于该工单的消息由 Dispatcher 送进来，循环从①重新开始。
+- **失败口**：工单不存在时 `load_ticket_state` 直接结束本轮，不会进入后续节点。
+
+跨多轮看，阶段也不是单向推进的：店长说“还是不行”（`UNSOLVED`）会把 Agent 从 `WAITING_MANAGER` 拉回 `SELF_SERVICE` 再生成一轮建议；店长说“没修好”（`MANAGER_REJECTED`）会把 Agent 从 `WAITING_CONFIRM` 拉回 `ENGINEER_TRACKING`。进入 `CLOSED` 后循环不再产生动作，只由 `sync_lifecycle` 收尾。
 
 ## 主要能力
 
