@@ -34,6 +34,7 @@ class GraphRuntime:
         self._checkpointer: Any | None = None
         self._ticket_graph: Any | None = None
         self._dispatcher_graph: Any | None = None
+        self._ticket_locks: dict[int, asyncio.Lock] = {}
         self._start_lock = asyncio.Lock()
         self.closed = False
         self.last_graph_path: tuple[str, ...] = ()
@@ -75,12 +76,15 @@ class GraphRuntime:
     async def invoke_ticket(self, ticket_id: int, event: dict[str, Any]) -> dict[str, Any]:
         if self._ticket_graph is None:
             await self.start()
-        config = {"configurable": {"thread_id": f"ticket:{ticket_id}"}}
-        result = await self._ticket_graph.ainvoke(
-            {"ticket_id": ticket_id, "incoming_event": dict(event)},
-            config=config,
-        )
-        return dict(result)
+        # 不同工单并行；同一工单在群内即使相邻提交也严格串行恢复 checkpoint。
+        lock = self._ticket_locks.setdefault(ticket_id, asyncio.Lock())
+        async with lock:
+            config = {"configurable": {"thread_id": f"ticket:{ticket_id}"}}
+            result = await self._ticket_graph.ainvoke(
+                {"ticket_id": ticket_id, "incoming_event": dict(event)},
+                config=config,
+            )
+            return dict(result)
 
     async def aclose(self) -> None:
         if self.closed:
@@ -91,5 +95,6 @@ class GraphRuntime:
         self._checkpointer = None
         self._ticket_graph = None
         self._dispatcher_graph = None
+        self._ticket_locks.clear()
         self.closed = True
         logger.info("LangGraph runtime closed")

@@ -4,16 +4,21 @@
 
 系统采用 **Supervisor + Ticket Agents** 模式：群级 Dispatcher Graph 是 Supervisor，负责理解消息上下文并找到目标工单；每张工单都是一个独立的 Ticket Agent，持续负责自己的自助排障、工程师跟进、SLA 和完工确认。
 
-同一个群可以同时运行多张工单。所有 Ticket Agent 复用同一份 LangGraph 定义，但分别使用自己的 `thread_id` 和 checkpoint，因此上下文、阶段和处理进度不会串单。
+同一个群可以同时运行多张工单。消息先在同一群内并发完成语义识别，再由群级闸门按 `(sent_at, message_id)` 顺序提交路由；不同工单随后可并行运行 Ticket Agent，同一工单严格有序。所有 Ticket Agent 复用同一份 LangGraph 定义，但分别使用自己的 `thread_id` 和 checkpoint，因此上下文、阶段和处理进度不会串单。
 
 ## LangGraph 多 Agent 编排图
 
 ```mermaid
 flowchart TB
-    M[钉钉群消息] --> W[InboxWorker<br/>同群串行 · 跨群并行]
+    M[钉钉群消息] --> W[InboxWorker<br/>不同群协程并行]
+    W --> GA[群 A：消息识别并行]
+    W --> GB[群 B：消息识别并行]
+    GA --> QA[群 A：OrderedCommitGate<br/>按 sent_at + message_id 有序提交]
+    GB --> QB[群 B：OrderedCommitGate<br/>按 sent_at + message_id 有序提交]
 
     subgraph LG[LangGraph 多 Agent 编排层]
-        W --> D[Supervisor<br/>Dispatcher Graph]
+        QA --> D[Supervisor<br/>Dispatcher Graph]
+        QB --> D
         D --> R{Conditional Edge<br/>消息属于哪张工单?}
 
         R -->|工单 12| A1[Ticket Agent #12<br/>排障 · 跟进 · 确认]
@@ -38,7 +43,7 @@ flowchart TB
     class C1,C2,CN checkpoint
 ```
 
-图中的 `Ticket Agent #12`、`#19` 和 `#N` 是同时存在的逻辑 Agent。它们没有各自启动进程，而是由 LangGraph 在消息到达时按 `thread_id` 恢复对应状态。
+图中的 `Ticket Agent #12`、`#19` 和 `#N` 是同时存在的逻辑 Agent。消息识别可并行，但路由提交不乱序；提交完成后，不同工单可并行执行，同一工单由 `GraphRuntime` 的工单级锁串行恢复状态。它们没有各自启动进程，而是由 LangGraph 按 `thread_id` 恢复对应状态。
 
 ## 主要能力
 
@@ -103,9 +108,9 @@ Agent 每次被消息唤醒时都会重新读取业务数据库，以真实工�
 
 1. `event_listener` 通过 `dws` CLI 监听钉钉群消息。
 2. `event_normalizer` 把原始事件转换成统一的 `NormalizedMessage`。
-3. 消息写入 Inbox，`InboxWorker` 保证同群串行、跨群并行。
+3. 消息写入 Inbox，`InboxWorker` 让跨群及群内识别并行，再由群级闸门按消息顺序提交。
 4. Dispatcher Graph 恢复附件和上下文，然后调用现有业务管道。
-5. 关键词和 LLM 生成结构化语义决策。
+5. 云端模型完成语义识别（全 AI 判断，关键词快路径已永久停用）。
 6. Router 根据编号、引用、用户上下文和候选评分定位工单。
 7. Validator 检查角色权限、必填字段和工单状态。
 8. `TicketCommandExecutor` 在 SQLite 事务中执行建单或状态变更。
@@ -117,7 +122,7 @@ Agent 每次被消息唤醒时都会重新读取业务数据库，以真实工�
 
 ## 店长与 Agent 的交互
 
-新故障创建工单后，Agent 会结合工单信息生成一轮排障建议。店长后续反馈由关键词优先识别，表达不明确时再交给 LLM 分类：
+新故障创建工单后，Agent 会结合工单信息生成一轮排障建议。店长后续反馈由工单 Agent 内部的关键词优先识别，表达不明确时再交给 LLM 分类（这是 Agent 内部的反馈分类，与上节已永久停用的消息级关键词快路径无关）：
 
 | 店长表达示例 | Agent 行为 |
 |---|---|
@@ -127,6 +132,18 @@ Agent 每次被消息唤醒时都会重新读取业务数据库，以真实工�
 | 普通闲聊或无法判断 | 不修改工单业务状态 |
 
 在单群多工单场景下，用户可以通过工单编号、回复某条已归档消息或先选择工单来明确上下文，避免把反馈写到其他工单。
+
+## 语义识别：全 AI 判断
+
+关键词快路径（`#报修` 等显式命令的本地解析）已于 2026-08-20 停用，并于 2026-09-16
+明确为**永久停用**：包括 `#报修` 在内的所有消息统一交由云端模型判断，系统不再保留
+本地规则兜底。
+
+这意味着模型接口是硬依赖：模型不可用时，消息会按现有重试策略进入
+`RETRY_PENDING`，累计失败后进入 `DEAD_LETTER`，不会有任何消息被本地规则接管。
+
+`semantics/keyword_matcher.py` 仍然保留，但只服务于离线评测（`semantics/evaluator.py`、
+`semantics/run_eval.py`）和单元测试，不在运行时决策链路中。
 
 ## RAG 状态
 

@@ -1,7 +1,8 @@
 """消息处理管道（计划书 §7、Task 11）。
 
-编排：Inbox → 待确认回复识别 → 关键词快路径/云端模型 → 语义决策审计 →
-候选快照 → 路由（编号>引用>上下文>语义>单候选）→ 校验 → 待确认/执行 → Outbox。
+编排：Inbox → 待确认回复识别 → 云端模型语义识别（全 AI，关键词快路径已永久停用） →
+语义决策审计 → 候选快照 → 路由（编号>引用>上下文>语义>单候选）→ 校验 →
+待确认/执行 → Outbox。
 
 运行模式门禁（§16）：
 - SHADOW：只记录语义决策，不归属、不建单、不发确认。
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from contextvars import ContextVar
 from dataclasses import replace
 from datetime import datetime
 from enum import StrEnum
@@ -36,7 +38,7 @@ from models import (
     TICKET_PENDING_CONFIRM,
     NormalizedMessage,
 )
-from ordering import parse_naive_dt
+from ordering import OrderedCommitGate, parse_naive_dt
 from routing.pending_actions import PendingActionService
 from routing.ticket_contexts import TicketContextStore
 from routing.ticket_router import (
@@ -46,7 +48,6 @@ from routing.ticket_router import (
     RoutingConfig,
 )
 from semantics.classifier import normalize_semantic_decision
-from semantics.keyword_matcher import match_keyword
 from semantics.protocol_loader import TicketProtocol
 from semantics.types import (
     DecisionStatus,
@@ -66,6 +67,10 @@ from tickets.executor import (
 from tickets.repository import TicketRepository
 
 logger = get_logger(__name__)
+
+_COMMIT_GATE: ContextVar[OrderedCommitGate | None] = ContextVar(
+    "message_commit_gate", default=None
+)
 
 _INBOX_COMPLETED = "COMPLETED"
 _INBOX_RETRY = "RETRY_PENDING"
@@ -175,26 +180,38 @@ class MessageProcessingPipeline:
         self._graph_runtime: Any | None = None
         self._graph_runtime_lock = asyncio.Lock()
 
-    async def process(self, item: dict[str, Any]) -> str:
-        """通过 Dispatcher Graph 处理消息，保持 InboxWorker 的原接口不变。"""
-        if not self._graph_enabled:
-            return await self._process_without_graph(item)
-        if self._graph_runtime is None:
-            async with self._graph_runtime_lock:
-                if self._graph_runtime is None:
-                    from graphs.runtime import GraphRuntime
+    async def process(
+        self,
+        item: dict[str, Any],
+        *,
+        commit_gate: OrderedCommitGate | None = None,
+    ) -> str:
+        """处理消息；可选群级闸门让识别并行、提交按消息顺序执行。"""
+        token = _COMMIT_GATE.set(commit_gate)
+        try:
+            if not self._graph_enabled:
+                return await self._process_without_graph(item)
+            if self._graph_runtime is None:
+                async with self._graph_runtime_lock:
+                    if self._graph_runtime is None:
+                        from graphs.runtime import GraphRuntime
 
-                    model_client = (
-                        getattr(self._classifier, "model_client", None)
-                        if self._classifier is not None
-                        else None
-                    )
-                    self._graph_runtime = GraphRuntime(
-                        pipeline=self,
-                        checkpoint_path=LANGGRAPH_CHECKPOINT_PATH,
-                        model_client=model_client,
-                    )
-        return await self._graph_runtime.process(item)
+                        model_client = (
+                            getattr(self._classifier, "model_client", None)
+                            if self._classifier is not None
+                            else None
+                        )
+                        self._graph_runtime = GraphRuntime(
+                            pipeline=self,
+                            checkpoint_path=LANGGRAPH_CHECKPOINT_PATH,
+                            model_client=model_client,
+                        )
+            return await self._graph_runtime.process(item)
+        finally:
+            _COMMIT_GATE.reset(token)
+            if commit_gate is not None:
+                # 正常路径已在业务提交后释放；这里兜底模型异常、重试等情况。
+                commit_gate.mark_done(str(item.get("message_id") or ""))
 
     @property
     def graph_runtime(self) -> Any | None:
@@ -273,16 +290,14 @@ class MessageProcessingPipeline:
             return None
         link = self._db.get_message_link(msg.message_id)
         if link is not None:
-            ticket_id = int(link["ticket_id"])
-            if link.get("link_type") == "CREATE":
-                self._context.select(
-                    msg.group_id,
-                    msg.sender_id,
-                    ticket_id,
-                    order_key=f"{msg.sent_at.strftime('%Y-%m-%d %H:%M:%S')}|{msg.message_id}",
-                    now=msg.sent_at,
-                )
-            return ticket_id
+            # 建单消息只把 Agent 指向新工单，**不得**顺手改写用户的选单上下文。
+            # 2026-09-16 修复：LangGraph 迁移（96cad38）曾在此对 link_type=CREATE
+            # 调用 _context.select，导致建单后 30 分钟内所有未编号消息被静默绑定到
+            # 「最新建的那张单」，绕过了「多候选 → 请选择具体工单」的澄清流程
+            # （与 README「单群多工单」和本函数 docstring 承诺的"不改变路由结果"冲突）。
+            # 选单上下文只能由用户显式动作建立：ticket.select、无编号补充时的
+            # 唯一候选兜底，以及归属问询后的选择。
+            return int(link["ticket_id"])
 
         candidates = self._repo.snapshot_candidates(
             msg.group_id,
@@ -387,11 +402,18 @@ class MessageProcessingPipeline:
 
     # ─────────────────────── 主流程 ───────────────────────
     async def _handle(self, msg: NormalizedMessage, item: dict[str, Any]) -> str:
-        if self._mode == RuntimeMode.SHADOW and msg.attachments:
-            return self._complete(item, msg, "SHADOW")
-        # 图片消息（含附件）→ 补图归属 + 多模态解析，不走文本模型
+        gate = _COMMIT_GATE.get()
         if msg.attachments:
-            return self._handle_image_attachment(item, msg)
+            if gate is not None:
+                await gate.wait_turn(msg.message_id)
+            try:
+                if self._mode == RuntimeMode.SHADOW:
+                    return self._complete(item, msg, "SHADOW")
+                # 图片消息（含附件）→ 补图归属；视觉解析仍异步执行，不占提交锁。
+                return self._handle_image_attachment(item, msg)
+            finally:
+                if gate is not None:
+                    gate.mark_done(msg.message_id)
 
         pending = self._pending.get_waiting(msg.group_id, msg.sender_id)
 
@@ -405,6 +427,25 @@ class MessageProcessingPipeline:
             decision.target_ticket_no, decision.missing_fields or "-",
         )
 
+        if gate is not None:
+            await gate.wait_turn(msg.message_id)
+        try:
+            return await self._handle_decided(item, msg, decision, pending)
+        finally:
+            if gate is not None:
+                gate.mark_done(msg.message_id)
+
+    async def _handle_decided(
+        self,
+        item: dict[str, Any],
+        msg: NormalizedMessage,
+        decision: SemanticDecision,
+        pending: Any,
+    ) -> str:
+        # 识别阶段可能与其他消息并行，轮到本消息提交时重新读取最新 Pending，
+        # 避免使用识别前快照处理已被前序消息创建/替换的确认动作。
+        pending = self._pending.get_waiting(msg.group_id, msg.sender_id)
+
         # SHADOW 只记录语义决策：不解决既有 Pending，不路由、校验、建 Pending 或发消息。
         if self._mode == RuntimeMode.SHADOW:
             self._save_decision(msg, decision)
@@ -416,7 +457,7 @@ class MessageProcessingPipeline:
             if resolved is not None:
                 return resolved
 
-        # 模型降级 → 重试/死信（关键词快路径不受影响）
+        # 模型降级 → 重试/死信（关键词快路径已永久停用，无本地兜底）
         if _is_model_fallback(decision):
             return self._retry_or_dead(item, msg, "模型调用失败")
 
@@ -735,11 +776,11 @@ class MessageProcessingPipeline:
         return tuple(dict.fromkeys((TICKET_ACTIVE, TICKET_OVERDUE, *states)))
 
     async def _decide(self, msg: NormalizedMessage) -> SemanticDecision:
-        # 2026-08-20 用户决策：全面取消 #关键词，全部由 AI 判断（关键词快路径已停用）
-        keyword = None  # match_keyword(msg.content, self._protocol)
-        if keyword is not None:
-            logger.info("关键词快路径命中 msg=%s intent=%s", msg.message_id, keyword.intent)
-            return keyword
+        # 关键词快路径已**永久停用**（2026-08-20 用户决策，2026-09-16 明确为永久）：
+        # 所有消息（含 #报修 等显式关键词）统一交由云端模型判断，此处不再回退到
+        # match_keyword。模型不可用时由 _is_model_fallback 走重试/死信，不会静默
+        # 降级为本地规则。semantics/keyword_matcher.py 仅保留给离线评测
+        # （semantics/evaluator.py、semantics/run_eval.py）与单测使用。
         # 订单提交已全面交由 AI 判断（避免纯数字手机号/资产号被本地正则误判为淘宝订单号）
         # 原本地订单号快路径已移除， bare order 等由模型识别为 ticket.repair_plan.submit
         # 候选选择快路径：消息是「2」「选2」「第二个」→ 选第 N 个活动工单

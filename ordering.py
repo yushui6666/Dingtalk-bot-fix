@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -74,3 +75,38 @@ def is_after(
 ) -> bool:
     """判断消息 A 是否严格晚于消息 B（(sent_at, message_id) 字典序）。"""
     return order_key(a_sent_at, a_message_id) > order_key(b_sent_at, b_message_id)
+
+
+class OrderedCommitGate:
+    """群级有序提交闸门，同时允许闸门前的识别阶段并行。
+
+    ``message_ids`` 必须按 ``(sent_at, message_id)`` 稳定顺序传入。
+    每条消息完成模型识别后先调用 :meth:`wait_turn`，只有前序消息完成短事务
+    提交后才继续路由和执行；前序失败时也必须调用 :meth:`mark_done` 释放后续，
+    避免一个坏消息把整个群卡死。
+    """
+
+    def __init__(self, message_ids: list[str]) -> None:
+        self._keys = list(dict.fromkeys(message_ids))
+        self._index = {key: index for index, key in enumerate(self._keys)}
+        self._turns = [asyncio.Event() for _ in self._keys]
+        if self._turns:
+            self._turns[0].set()
+        self._done: set[str] = set()
+        self._next = 0
+
+    async def wait_turn(self, message_id: str) -> None:
+        """等待该消息轮到自己提交；不在当前闸门中的消息不阻塞。"""
+        index = self._index.get(message_id)
+        if index is not None:
+            await self._turns[index].wait()
+
+    def mark_done(self, message_id: str) -> None:
+        """标记一条消息已结束提交（成功、忽略或失败均可），释放后续。"""
+        if message_id not in self._index or message_id in self._done:
+            return
+        self._done.add(message_id)
+        while self._next < len(self._keys) and self._keys[self._next] in self._done:
+            self._next += 1
+            if self._next < len(self._keys):
+                self._turns[self._next].set()

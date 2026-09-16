@@ -21,7 +21,6 @@ from typing import Any
 from semantics.protocol_loader import TicketProtocol
 from semantics.types import SemanticDecision, TicketCandidate, TicketScore, PendingAction
 from semantics.model_client import ModelTimeoutError, ModelResponseError
-from semantics.keyword_matcher import match_keyword
 
 from models import ROLE_ENGINEER, ROLE_LEADER, ROLE_MANAGER, NormalizedMessage
 
@@ -270,9 +269,9 @@ class SemanticClassifier:
         """
         candidates = candidates or []
 
-        # 1. 关键词快路径已停用（2026-08-20 全面由 AI 判断）：不再跳过模型
-        # if match_keyword(message.content, self._protocol) is not None:
-        #     return SemanticDecision(... keyword_already_matched ...)
+        # 1. 关键词快路径已**永久停用**（2026-08-20 决策，2026-09-16 明确为永久）：
+        # 任何消息都不再短路到本地 match_keyword，必须经过模型。若日后确实需要
+        # 本地兜底，应作为显式配置项重新设计，而不是恢复此处的注释代码。
 
         action_cues = _find_business_action_cues(message.content)
         if len(action_cues) > 1:
@@ -541,8 +540,9 @@ def _fallback_decision(
 ) -> SemanticDecision:
     """模型失败时的降级决策。
 
-    §10.3：模型不可用时自然语言进入重试或死信；
-    显式关键词快路径不受影响。
+    §10.3：模型不可用时消息进入重试或死信。
+    关键词快路径已永久停用（2026-09-16），因此**没有任何本地兜底**：
+    模型不可用时包括 #报修 在内的全部消息都无法完成业务动作。
     """
     return SemanticDecision(
         protocol_version=protocol.protocol_version,

@@ -8,10 +8,11 @@ flowchart TD
         LISTENER["event_listener<br/>监听多个钉钉群"]
         NORMALIZER["event_normalizer<br/>消息、角色、引用、图片标准化"]
         INBOX[("SQLite inbox_messages")]
-        WORKER["InboxWorker<br/>群内串行 · 跨群并行"]
+        WORKER["InboxWorker<br/>跨群并行 · 群内识别并行"]
+        COMMIT_GATE["OrderedCommitGate<br/>群级按消息顺序提交"]
         SCHEDULER["SchedulerWorker<br/>SLA、订单、过期任务"]
 
-        USER --> LISTENER --> NORMALIZER --> INBOX --> WORKER
+        USER --> LISTENER --> NORMALIZER --> INBOX --> WORKER --> COMMIT_GATE
     end
 
     %% ────────────── LangGraph 外层调度 ──────────────
@@ -40,7 +41,7 @@ flowchart TD
         ROUTE_RESULT -->|闲聊或无业务动作| IGNORE
     end
 
-    WORKER --> ENTRY
+    COMMIT_GATE --> ENTRY
 
     %% ────────────── 每张工单独立 Agent ──────────────
     subgraph TicketAgent["LangGraph：工单 Agent（每张工单独立 checkpoint）"]
@@ -159,7 +160,8 @@ flowchart TD
 
 ## 设计约束
 
-- 一个群使用一个消息入口和群级路由器。
+- 一个群使用一个消息入口；同群消息可并行识别，但通过群级提交闸门保持路由顺序。
+- 不同工单在提交后并行运行 Ticket Agent，同一工单严格有序。
 - 每张工单复用同一份编译后的 LangGraph，以 `ticket:{ticket_id}` 隔离 checkpoint 和对话状态。
 - 店长排障主循环为 `RAG → LLM → 指导 → 等待反馈 → 再检索`。
 - 转交工程师后，同一个工单 Agent 继续跟踪接单、处理、配件、完工与店长确认。

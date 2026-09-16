@@ -1,4 +1,9 @@
-"""确定性关键词快路径匹配器（计划书 Task 2）。
+"""确定性关键词匹配器（计划书 Task 2）。
+
+⚠️ 不在运行时决策链路中：关键词快路径已**永久停用**（2026-08-20 决策，
+2026-09-16 明确为永久），生产消息一律走云端模型。本模块保留给：
+- 离线评测语义模型的基线对照：semantics/evaluator.py、semantics/run_eval.py
+- 单元测试 tests/test_keyword_matcher.py
 
 match_keyword() 输入用户消息文本和已加载的 TicketProtocol，
 输出 SemanticDecision（命中）或 None（无匹配）。

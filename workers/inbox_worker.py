@@ -1,8 +1,10 @@
 """收件箱工作器（计划书 §8.2、Task 6）。
 
-跨群并行、群内串行：
+跨群并行、群内“识别并行 + 提交有序”：
 - 每个群一个独立协程，组间并发 —— 某群的慢模型调用不阻塞其他群。
-- 同一群内按 `(sent_at, message_id)` 顺序逐条处理（后条等前条落定）。
+- 同一群一个批次内的消息并发进入模型识别，不持有数据库事务。
+- 群级 OrderedCommitGate 按 `(sent_at, message_id)` 顺序放行短事务提交；
+  提交完成后不同工单可并行进入 Ticket Agent，同一工单由 GraphRuntime 串行。
 - 由 supervisor 保持群协程存活，并周期性刷新群列表（支持动态加群）。
 - 启动时把崩溃残留的 PROCESSING 重置回 RECEIVED。
 
@@ -17,6 +19,7 @@ from typing import Any
 
 from db import Database
 from logger import get_logger
+from ordering import OrderedCommitGate
 
 logger = get_logger(__name__)
 
@@ -70,7 +73,7 @@ class InboxWorker:
         return self._db.list_group_ids()
 
     async def _group_loop(self, group_id: str) -> None:
-        """单群串行消费；空队列时小睡，重试消息到期后自然被再次拉取。"""
+        """单群并发识别、按序提交；空队列时小睡，重试消息到期后再次拉取。"""
         logger.info("群处理协程启动 group=%s", group_id)
         while True:
             try:
@@ -78,8 +81,21 @@ class InboxWorker:
                 if not items:
                     await asyncio.sleep(self._poll_interval)
                     continue
-                for item in items:
-                    await self._pipeline.process(item)
+                gate = OrderedCommitGate([str(item["message_id"]) for item in items])
+                tasks = [
+                    asyncio.create_task(
+                        self._pipeline.process(item, commit_gate=gate),
+                        name=f"inbox:{group_id}:{item['message_id']}",
+                    )
+                    for item in items
+                ]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                for item, result in zip(items, results, strict=True):
+                    if isinstance(result, BaseException):
+                        logger.error(
+                            "消息处理异常 group=%s message=%s err=%s",
+                            group_id, item["message_id"], result,
+                        )
                 self._notifier.flush()
             except asyncio.CancelledError:
                 logger.info("群处理协程停止 group=%s", group_id)

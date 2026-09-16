@@ -7,9 +7,12 @@
 - 时区统一：naive datetime 与 aware datetime 可比较
 """
 
+import asyncio
 from datetime import datetime, timedelta
 
-from ordering import TZ, is_after, order_key, parse_naive_dt
+import pytest
+
+from ordering import OrderedCommitGate, TZ, is_after, order_key, parse_naive_dt
 
 
 def test_sent_at_dominates():
@@ -71,3 +74,33 @@ def test_ordering_transitive():
     keys = [order_key(t1, "a"), order_key(t2, "a"), order_key(t3, "a")]
     assert keys == sorted(keys)
     assert is_after(t3, "a", t1, "a") and is_after(t2, "a", t1, "a")
+
+
+@pytest.mark.asyncio
+async def test_ordered_commit_gate_preserves_message_order():
+    """识别完成顺序可以乱，但群级提交严格按 Inbox 顺序。"""
+    gate = OrderedCommitGate(["m1", "m2"])
+    committed: list[str] = []
+
+    async def commit(message_id: str, classify_delay: float) -> None:
+        await asyncio.sleep(classify_delay)  # m2 先识别完成
+        await gate.wait_turn(message_id)
+        committed.append(message_id)
+        await asyncio.sleep(0.01)
+        gate.mark_done(message_id)
+
+    await asyncio.gather(commit("m2", 0.0), commit("m1", 0.02))
+    assert committed == ["m1", "m2"]
+
+
+@pytest.mark.asyncio
+async def test_ordered_commit_gate_releases_successor_on_failure():
+    """前序消息失败也必须释放后序，不能让整群永久阻塞。"""
+    gate = OrderedCommitGate(["m1", "m2"])
+    entered: list[str] = []
+
+    gate.mark_done("m1")  # 模拟 m1 在进入提交前失败
+    await gate.wait_turn("m2")
+    entered.append("m2")
+    gate.mark_done("m2")
+    assert entered == ["m2"]

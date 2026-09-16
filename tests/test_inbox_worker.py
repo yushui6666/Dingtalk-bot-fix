@@ -1,7 +1,7 @@
-"""Inbox Worker 并发测试：跨群并行、群内串行（计划书 §8.2）。
+"""Inbox Worker 并发测试：跨群并行、群内识别并行且提交有序（计划书 §8.2）。
 
-用一个带延迟的分类器探测最大并发模型调用数：两条分属不同群的自然语言
-消息应同时进入模型调用（max_active >= 2）；同群两条则严格串行（max_active == 1）。
+用一个带延迟的分类器探测最大并发模型调用数：两条分属不同群或同一群的自然
+语言消息都应并发进入模型调用（max_active >= 2）；短事务提交由群级闸门排序。
 """
 
 from __future__ import annotations
@@ -145,8 +145,8 @@ async def test_different_groups_parallel_model_calls(env):
 
 
 @pytest.mark.asyncio
-async def test_same_group_serial_processing(env):
-    """同群两条自然语言消息应串行（max_active == 1）。"""
+async def test_same_group_parallel_processing(env):
+    """同群两条自然语言消息应并行识别（max_active >= 2）。"""
     _enqueue(env, "G1", "帮我查一下工单", "m1")
     _enqueue(env, "G1", "随便聊聊天气", "m2")
     await _run_worker_for(env, 0.6, ["G1"])
@@ -158,12 +158,12 @@ async def test_same_group_serial_processing(env):
     }
     print("  statuses:", statuses)
     assert all(status == "COMPLETED" for status, _ in statuses.values())
-    assert env.classifier.max_active <= 1, f"同群未串行: max_active={env.classifier.max_active}"
+    assert env.classifier.max_active >= 2, f"同群识别未并行: max_active={env.classifier.max_active}"
 
 
 @pytest.mark.asyncio
 async def test_group_keyword_messages_processed_while_model_slow(env):
-    """某群模型慢，不应阻塞另一群的建单（全AI架构下均为模型调用，但按群并行）。"""
+    """某群模型慢，不应阻塞另一群或其他工单链路。"""
     _enqueue(env, "G2", "帮我查一下工单（模型慢）", "m1")  # G2 走慢模型
     _enqueue(env, "G1", "#报修\n主题：收银机\n位置：前台\n问题描述：死机\n时效：1天", "m2")  # G1 全AI建单
     await _run_worker_for(env, 0.6, ["G1", "G2"])

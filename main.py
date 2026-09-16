@@ -133,7 +133,10 @@ def _build_pipeline(mode: str):
         classifier = SemanticClassifier(client=client, protocol=protocol)
         logger.info("云端模型已启用 model=%s base=%s", client.model, client.base_url)
     else:
-        logger.info("云端模型未启用，仅走关键词快路径")
+        logger.warning(
+            "云端模型未启用：关键词快路径已永久停用（2026-09-16），"
+            "所有消息将走模型降级路径 RETRY_PENDING → DEAD_LETTER，无法建单或推进工单"
+        )
 
     pipeline = MessageProcessingPipeline(
         db=db,
