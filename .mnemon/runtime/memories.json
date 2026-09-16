@@ -21,6 +21,13 @@
       "updated_at": "2026-09-16T03:36:55.274Z",
       "target": "memory",
       "importance": "normal"
+    },
+    {
+      "content": "DSH 工具坑：read 默认 limit=2000，若带 limit 读取后直接用 lines 切片 + write 回写，会静默截断文件尾部（曾把 README.md 347 行截成 119 行）。整文件改写前要么读全量，要么先 git show HEAD:file 备份并按行拼接；改完必须核对总行数与 grep '^#' 标题列表。",
+      "created_at": "2026-09-16T05:54:21.035Z",
+      "updated_at": "2026-09-16T05:54:21.035Z",
+      "target": "memory",
+      "importance": "normal"
     }
   ]
 }

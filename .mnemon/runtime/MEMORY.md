@@ -3,3 +3,5 @@ dingtalk-agent（/Users/yushui/Desktop/dingtalk-agent）：钉钉群报修工单
 dingtalk-agent 决策：关键词快路径**永久停用**（2026-08-20 起停用，用户 2026-09-16 明确为永久），生产全部走云端模型。2026-09-16 已清理死代码：pipeline.py `_decide()` 删掉 keyword 分支与 `match_keyword` import，classifier.py 删掉注释代码与该 import，main.py 无模型时改为 warning，README 新增「语义识别：全 AI 判断」一节。semantics/keyword_matcher.py 保留但仅服务离线评测（evaluator/run_eval）与单测。模型是硬依赖：不可用则 RETRY_PENDING→DEAD_LETTER，无本地兜底。注意 tests 里 FakeClassifier 仍调用 match_keyword，故这部分集成测试覆盖的是离线路径而非生产路径。
 §
 dingtalk-agent 不变量：LangGraph 的 graph_* hook 只能读取与定位，不得改写业务路由状态。2026-09-16 修复的一类回归：迁移提交 96cad38 在 `graph_resolve_agent_ticket` 里对 link_type=CREATE 调用 `_context.select`，导致建单后 30 分钟内所有未编号消息被静默绑到「最新那张单」，绕过 README 与计划书规定的「多候选→请选择具体工单」澄清（同时害红 7 个测试）。修复后该函数只 return ticket_id。排查同类回归的有效手法：用 `git show 9ce6c37:pipeline.py | grep -n _context.select`（迁移前只有 1 处调用点）与当前调用点数量对比。
+§
+DSH 工具坑：read 默认 limit=2000，若带 limit 读取后直接用 lines 切片 + write 回写，会静默截断文件尾部（曾把 README.md 347 行截成 119 行）。整文件改写前要么读全量，要么先 git show HEAD:file 备份并按行拼接；改完必须核对总行数与 grep '^#' 标题列表。
